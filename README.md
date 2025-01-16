@@ -19,7 +19,6 @@ The field data is encrypted and is not available for industrial secrecy reasons.
 
 
 ## Contributing
-s
 Let
 
 ## License

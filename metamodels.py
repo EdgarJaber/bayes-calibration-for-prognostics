@@ -6,13 +6,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+#import torch
+#import torch.nn as nn
+#import torch.optim as optim
+#from torch.utils.data import DataLoader, TensorDataset
 
 
-class gp_metamodel(BaseEstimator):
+class GpMetamodel(object):
     """
     Wrapper for OpenTURNS Gaussian Process.
     """
@@ -85,7 +85,7 @@ class gp_metamodel(BaseEstimator):
 
 
 
-class vector_pce_regression(object):
+class VPCEMetamodel(object):
     """
     Vector Polynomial chaos expansions with regression method for coefficient estimation.
     Comes with a fit and predict method.
@@ -101,44 +101,41 @@ class vector_pce_regression(object):
         self.input_dimension = 1
         self.trained_ = False
 
-    def fit(self, X, y, marginals, distribution):
+    def fit(self, X_train, y_train, prior_distribution_list, distribution):
 
-        X = StandardScaler().fit_transform(X)
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, train_size=0.75, random_state=42)
-
-        self.marginals = marginals
+        self.prior_distribution_list = prior_distribution_list
         self.distribution = distribution
         
         multivar_basis = ot.OrthogonalProductPolynomialFactory(self.marginals)
         selection_algo = ot.LeastSquaresMetaModelSelectionFactory()
-        projection_strategy = ot.LeastSquaresStrategy(self.X_train, self.y_train, selection_algo)
+        projection_strategy = ot.LeastSquaresStrategy(X_train, y_train, selection_algo)
         enum_func = ot.HyperbolicAnisotropicEnumerateFunction(self.input_dimension, self.q_norm)
         P = enum_func.getBasisSizeFromTotalDegree(self.degree)
         adaptive_strategy = ot.FixedStrategy(multivar_basis, P)
-        self.chaos_algo = ot.FunctionalChaosAlgorithm(self.X_train, self.y_train, distribution, adaptive_strategy, projection_strategy)
+        self.chaos_algo = ot.FunctionalChaosAlgorithm(X_train, y_train, distribution, adaptive_strategy, projection_strategy)
         self.chaos_algo.run()
         if self.verbose:
             print(f"Running Polynomial Chaos Expansion with regression method for degree {self.degree}, q-norm {self.q_norm}")
         self.pce = self.chaos_algo.getResult()
         self.trained_ = True
 
-    def predict(self, X_new):
+    def predict(self, X_test):
         if not self.trained_:
             raise ValueError("You must first fit the Polynomial Chaos Expansion")
-        X_new = StandardScaler().fit_transform(X_new)
-        y_pred = self.pce(X_new)
+        X_test = StandardScaler().fit_transform(X_test)
+        y_pred = self.pce(X_test)
         return y_pred
     
-    def r2_score(self):
+    def r2_score(self, X_test, y_test):
         if not self.trained_:
             raise ValueError("You must first fit the Polynomial Chaos Expansion")
-        output = self.predict(self.X_test).T
-        transposed_test = self.y_test.T 
+        output = self.predict(X_test).T
+        transposed_test = y_test.T 
         r2scores_in_time = np.asarray([r2_score(transposed_test[i], output[i]) for i in range(self.time_discretization)])
         return r2scores_in_time
 
 
-class karhunen_loeve_decomposition(object):
+class KarhunenLoeveMetamodel(object):
     """
     Karhunen-Loeve decomposition metamodel.
     """
@@ -220,7 +217,7 @@ class karhunen_loeve_decomposition(object):
         self.r2s = []
 
         for i in range(self.nb_modes): 
-            gp = gp_metamodel(trend=prior_mean, kernel=prior_kernel, dimension=self.input_dimension)
+            gp = GpMetamodel(trend=prior_mean, kernel=prior_kernel, dimension=self.input_dimension)
             gp.fit(self.X_train, self.y_train[:, i])
             if self.verbose:
                 print(f'Done fitting mode {i+1}')
@@ -250,7 +247,7 @@ class karhunen_loeve_decomposition(object):
             raise ValueError('You must first fit the modes of the Karhunen-Loeve')
         
 
-class mlp_metamodel(object):
+class MLPMetamodel(object):
     """
     Artificial Neural Network metamodel.
     """

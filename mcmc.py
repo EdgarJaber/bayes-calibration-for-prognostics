@@ -2,19 +2,30 @@ import openturns as ot
 import numpy as np
 
 class BayesCalibrationMCMC:
-    def __init__(self, data: list, data_time_indices: list, metamodel: ot.Function, discrepancy=False) -> None:
+    def __init__(self, data: list, data_time_indices: list, metamodel: ot.Function, scaler=None, discrepancy=False) -> None:
         self.data = data
         self.data_time_indices = data_time_indices
         self.metamodel = metamodel
         self.discrepancy = discrepancy
+        self.scaler = scaler
+
 
     class CalibrationFunction:
-        def __init__(self, metamodel: ot.Function, 
+        def __init__(self, metamodel: ot.Function, data=None, scaler=None
         ) -> None:
             self.metamodel = metamodel
+            self.data = data
+            self.scaler = scaler
 
         def __call__(self, x: list) -> np.array:
-            return np.asarray(self.metamodel([x[0]]))
+            if self.metamodel.getInputDimension() == 1:
+                return np.asarray(self.metamodel([x[0]]))
+            else:
+                data_times = []
+                for i in range(len(self.data)):
+                    data_times += list(self.data[i][:, 0]*24)
+                data_times = np.asarray(sorted(data_times))
+                return np.asarray(self.metamodel(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))]))))
 
     class LikelihoodFunction:
         def __init__(self, data: np.array, data_time_indices: list, calib_function, discrepancy=False) -> None:
@@ -68,7 +79,7 @@ class BayesCalibrationMCMC:
         # Use uniform distribution as initial guess
         x_init = ot.Uniform(support_min[0], support_max[0]).getSample(n_chains)
         # Initialize calibration function
-        calibration_function = self.CalibrationFunction(self.metamodel)
+        calibration_function = self.CalibrationFunction(self.metamodel, self.data, self.scaler)
         # Initialize likelihood function
         likelihood_func = self.LikelihoodFunction(self.data, self.data_time_indices, calib_function=calibration_function)()
 

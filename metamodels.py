@@ -12,239 +12,313 @@ from sklearn.preprocessing import StandardScaler
 #from torch.utils.data import DataLoader, TensorDataset
 
 
-class GpMetamodel(object):
+class GpMetamodel(BaseEstimator):
     """
     Wrapper for OpenTURNS Gaussian Process.
     """
     def __init__(
         self, trend: str, kernel: str, 
-        dimension:int, noise: float = None
+        dimension: int, noise: float = None
     ) -> None:
         self.trend = trend
         self.kernel = kernel
         self.dimension = dimension
-        self.trained_ = False
         self.noise = noise
+        self.trained_ = False
+        self.X_train_ = None 
+        self.y_train_ = None 
 
     def fit(self, X_train, y_train):
 
+        # Validate inputs
         if self.trend not in ['Constant', 'Linear', 'Quad']:
             raise ValueError(f"trend must be one of ['Constant', 'Linear', 'Quad']")
 
         if self.kernel not in ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']:
             raise ValueError(f"kernel must be one of ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']")
-        
+
+        # Save training data for later use
+        self.X_train_ = X_train
+        self.y_train_ = y_train
+
+        # Initialize basis and kernel
         if self.trend == 'Constant':
             basis = ot.ConstantBasisFactory(self.dimension).build()
         elif self.trend == 'Linear':
             basis = ot.LinearBasisFactory(self.dimension).build()
         elif self.trend == 'Quad':
-            basis = ot.QuadraticBasisFactory(self.dimension).build()    
+            basis = ot.QuadraticBasisFactory(self.dimension).build()
 
         if self.kernel == 'AbsExp':
-            covarianceModel = ot.AbsoluteExponential([1.0]*self.dimension)
+            covarianceModel = ot.AbsoluteExponential([1.0] * self.dimension)
         elif self.kernel == 'SqExp':
-            covarianceModel = ot.SquaredExponential([1.0]*self.dimension)
+            covarianceModel = ot.SquaredExponential([1.0] * self.dimension)
         elif self.kernel == 'M-1/2':
-            covarianceModel = ot.MaternModel([1.0]*self.dimension, [1.0], 0.5)
+            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 0.5)
         elif self.kernel == 'M-3/2':
-            covarianceModel = ot.MaternModel([1.0]*self.dimension, [1.0], 1.5)
+            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 1.5)
         elif self.kernel == 'M-5/2':
-            covarianceModel = ot.MaternModel([1.0]*self.dimension, [1.0], 2.5)
+            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 2.5)
 
         if self.noise:
             covarianceModel.setNuggetFactor(self.noise)
 
-        self.gp = ot.KrigingAlgorithm(
+        # Initialize and run the GP model
+        self.gp_ = ot.KrigingAlgorithm(
             ot.Sample(X_train),
             ot.Sample(y_train.reshape(-1, 1)),
             covarianceModel, basis
         )
+        self.gp_.run()
 
-        self.gp.run()
+        self.gp = self.gp_.getResult().getMetaModel()
 
         self.trained_ = True
 
     def predict(self, X_test, return_std=False):
+        if not self.trained_:
+            raise ValueError("The model has not been trained yet.")
+        
+        y_pred = self.gp(X_test)
 
-        metamodel = self.gp.getResult()(X_test)
+        #y_pred = metamodel.getMean()
+        #y_std = metamodel.getStandardDeviation()
 
-        y_pred = metamodel.getMean()
-        y_std = metamodel.getStandardDeviation()
-
-        if not return_std:
-            return np.array(y_pred)
-        else:
-            return np.array(y_pred), np.array(y_std)
+        #if not return_std:
+        #    return np.array(y_pred)
+        #else:
+        return np.array(y_pred)#, np.array(y_std)
 
     def __sklearn_is_fitted__(self):
-        if self.trained_:
-            return True
-        else:
-            return False
+        return self.trained_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['gp_'] = None  # Exclude the non-picklable `self.gp` object
+        state['gp'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        # Recreate the `self.gp` object if training data is available
+        if self.X_train_ is not None and self.y_train_ is not None:
+            self.fit(self.X_train_, self.y_train_)
 
 
 
-class VPCEMetamodel(object):
+class VPCEMetamodel(BaseEstimator):
     """
     Vector Polynomial chaos expansions with regression method for coefficient estimation.
     Comes with a fit and predict method.
     """
     def __init__(
-            self, degree=5, 
-            q_norm=2.0,
+            self, degree: int, q_norm: float, prior: ot.Distribution,
             verbose=True
             )-> None:
         self.degree = degree
         self.q_norm = q_norm
         self.verbose = verbose
+        self.prior = prior
+        self.prior_distribution_list = [prior]
         self.input_dimension = 1
         self.trained_ = False
+        self.X_train_ = None 
+        self.y_train_ = None 
 
-    def fit(self, X_train, y_train, prior_distribution_list, distribution):
+    def fit(self, X_train, y_train):
+        # Save training data for later use
+        self.X_train_ = X_train
+        self.y_train_ = y_train
 
-        self.prior_distribution_list = prior_distribution_list
-        self.distribution = distribution
+        self.distribution = ot.ComposedDistribution(self.prior_distribution_list)
         
-        multivar_basis = ot.OrthogonalProductPolynomialFactory(self.marginals)
+        multivar_basis = ot.OrthogonalProductPolynomialFactory(self.prior_distribution_list)
         selection_algo = ot.LeastSquaresMetaModelSelectionFactory()
         projection_strategy = ot.LeastSquaresStrategy(X_train, y_train, selection_algo)
         enum_func = ot.HyperbolicAnisotropicEnumerateFunction(self.input_dimension, self.q_norm)
         P = enum_func.getBasisSizeFromTotalDegree(self.degree)
         adaptive_strategy = ot.FixedStrategy(multivar_basis, P)
-        self.chaos_algo = ot.FunctionalChaosAlgorithm(X_train, y_train, distribution, adaptive_strategy, projection_strategy)
+        self.chaos_algo = ot.FunctionalChaosAlgorithm(X_train, y_train, self.distribution, adaptive_strategy, projection_strategy)
         self.chaos_algo.run()
         if self.verbose:
             print(f"Running Polynomial Chaos Expansion with regression method for degree {self.degree}, q-norm {self.q_norm}")
-        self.pce = self.chaos_algo.getResult()
+        self.pce = self.chaos_algo.getResult().getMetaModel()
         self.trained_ = True
 
     def predict(self, X_test):
         if not self.trained_:
             raise ValueError("You must first fit the Polynomial Chaos Expansion")
-        X_test = StandardScaler().fit_transform(X_test)
+        #X_test = StandardScaler().fit_transform(X_test)
         y_pred = self.pce(X_test)
         return y_pred
     
-    def r2_score(self, X_test, y_test):
+    def r2_score(self, X_test, y_test, time_discretization):
         if not self.trained_:
             raise ValueError("You must first fit the Polynomial Chaos Expansion")
-        output = self.predict(X_test).T
+        output = np.asarray(self.predict(X_test)).T
         transposed_test = y_test.T 
-        r2scores_in_time = np.asarray([r2_score(transposed_test[i], output[i]) for i in range(self.time_discretization)])
+        r2scores_in_time = np.asarray([r2_score(transposed_test[i], output[i]) for i in range(len(time_discretization))])
         return r2scores_in_time
+    
+    def __sklearn_is_fitted__(self):
+        return self.trained_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['pce'] = None  # Exclude the non-picklable `self.pce` object
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        # Recreate the `self.gp` object if training data is available
+        if self.X_train_ is not None and self.y_train_ is not None:
+            self.fit(self.X_train_, self.y_train_)
 
 
-class KarhunenLoeveMetamodel(object):
+class KarhunenLoeveMetamodel(BaseEstimator):
     """
     Karhunen-Loeve decomposition metamodel.
     """
     def __init__(
-            self, variance_explained=0.99, 
+            self, trend: str, kernel: str, simulation_time: np.array,
+            variance_explained=0.99, 
             verbose=True
             )-> None:
+        self.trend = trend
+        self.kernel = kernel
+        self.simulation_time = simulation_time
         self.nb_modes = 5
-        self.explained_variance_threshold = 0.9999
+        self.explained_variance_threshold = variance_explained
         self.verbose = verbose
         self.y_decomposed = False
-        self.modes_fitted = False
+        self.trained_ = False
         self.threshold = 1.0e-7
+        self.X_train = None 
+        self.y_train = None
 
-    def kl_output(self, y, simulation_time):
+    class KLResult:
+        def __init__(self, simulation_time:np.array, threshold=1.0e-7, nb_modes=5, verbose=True, explained_variance=0.99
+        ) -> None:
+            self.simulation_time = simulation_time
+            self.threshold = threshold
+            self.verbose = verbose
+            self.nb_modes = nb_modes
+            self.explained_variance_threshold = explained_variance
 
-        self.y = y
-        self.simulation_time = simulation_time
+        def __call__(self, y: np.array) -> np.array:
 
-        vertices_number = simulation_time.shape[0]
-        interval = ot.Interval(min(simulation_time), max(simulation_time))
-        mesh = ot.IntervalMesher([vertices_number - 1]).build(interval)
+            vertices_number = self.simulation_time.shape[0]
+            interval = ot.Interval(min(self.simulation_time), max(self.simulation_time))
+            mesh = ot.IntervalMesher([vertices_number - 1]).build(interval)
 
-        sample_size = y.shape[0]
+            sample_size = y.shape[0]
 
-        process_sample = ot.ProcessSample(mesh, sample_size, 1)
-        process_sample.clear()
-        for i in range(sample_size):
-            process_sample.add(ot.Field(mesh, ot.Sample(y[i].reshape(1, -1).T)))
-        self.process_sample = process_sample
+            process_sample = ot.ProcessSample(mesh, sample_size, 1)
+            process_sample.clear()
+            for i in range(sample_size):
+                process_sample.add(ot.Field(mesh, ot.Sample(y[i].reshape(1, -1).T)))
+            self.process_sample = process_sample
 
-        algo = ot.KarhunenLoeveSVDAlgorithm(process_sample, self.threshold)
-        if self.verbose:
-            print("Running Karhunen-Loeve decomposition")
-        algo.run()
+            algo = ot.KarhunenLoeveSVDAlgorithm(process_sample, self.threshold)
 
-        self.kl_result = algo.getResult()
+            if self.verbose:
+                print("Running Karhunen-Loeve decomposition")
+            algo.run()
 
-        self.time_discretization = len(self.simulation_time)
+            self.kl_algo_result = algo.getResult()
 
-        self.eigenfunctions = self.kl_result.getScaledModesAsProcessSample()
-        self.eigenvalues = self.kl_result.getEigenvalues()
+            self.time_discretization = len(self.simulation_time)
 
-        self.modes = np.asarray([[self.eigenfunctions.getSampleAtVertex(i)[j][0] for i in range(self.time_discretization)] for j in range(self.nb_modes)])
+            self.eigenfunctions = self.kl_algo_result.getScaledModesAsProcessSample()
+            self.eigenvalues = self.kl_algo_result.getEigenvalues()
 
-        self.y_decomposed = True
+            self.modes = np.asarray([[self.eigenfunctions.getSampleAtVertex(i)[j][0] for i in range(self.time_discretization)] for j in range(self.nb_modes)])
 
-        eigval_square = np.asarray(self.eigenvalues)**2
-        for i in range(self.eigenvalues.getDimension()):
-            self.explained_variance = eigval_square[:i].sum()/eigval_square.sum()
-            if self.explained_variance > self.explained_variance_threshold:
-                self.nb_modes = i
-                break
-        if self.verbose:
-            print(f"Explained variance for {i} modes is {self.explained_variance}")
+            self.y_decomposed = True
+
+            eigval_square = np.asarray(self.eigenvalues)**2
+            for i in range(self.eigenvalues.getDimension()):
+                self.explained_variance = eigval_square[:i].sum()/eigval_square.sum()
+                if self.explained_variance > self.explained_variance_threshold:
+                    self.nb_modes = i
+                    break
+            if self.verbose:
+                print(f"Explained variance for {i} modes is {self.explained_variance}")
+
+            return self.modes
 
 
-    def fit(self, X, prior_mean='Constant', prior_kernel='AbsExp'):
+    def fit(self, X_train, y_train):
 
-        if prior_mean not in ['Constant', 'Linear', 'Quad']:
-            raise ValueError(f"trend must be one of ['Constant', 'Linear', 'Quad']")
+        self.X_train_ = X_train
+        self.y_train_ = y_train
 
-        if prior_kernel not in ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']:
-            raise ValueError(f"kernel must be one of ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']")
-        
-        if self.y_decomposed:
-            if self.nb_modes > self.eigenvalues.getDimension():
-                raise ValueError("Number of modes must be less than the dimension of the Karhunen-Loeve decomposition")
-            new_y = np.asarray(self.kl_result.project(self.process_sample))
-        else:
-            raise ValueError("You must first decompose the output data")
-        
-        self.X = X
-        self.input_dimension = X.shape[1]
+        self.kl_result = self.KLResult(self.simulation_time, self.threshold, self.verbose, explained_variance=self.explained_variance_threshold)
+        self.modes = self.kl_result(y_train)
+
+        y_train = np.asarray(self.kl_result.kl_algo_result.project(self.kl_result.process_sample))
+
+        #if self.y_decomposed:
+        #    if self.nb_modes > self.eigenvalues.getDimension():
+        #        raise ValueError("Number of modes must be less than the dimension of the Karhunen-Loeve decomposition")
+        #    new_y = np.asarray(self.kl_result.project(self.process_sample))
+        #else:
+        #    raise ValueError("You must first decompose the output data")
+        #
+        self.input_dimension = X_train.shape[1]
             
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, new_y, train_size=0.75, random_state=42)
-
         self.all_gps = []
         self.r2s = []
 
-        for i in range(self.nb_modes): 
-            gp = GpMetamodel(trend=prior_mean, kernel=prior_kernel, dimension=self.input_dimension)
-            gp.fit(self.X_train, self.y_train[:, i])
+        for i in range(self.kl_result.nb_modes): 
+            gp = GpMetamodel(trend=self.trend, kernel=self.kernel, dimension=self.input_dimension)
+            gp.fit(X_train, y_train[:, i])
             if self.verbose:
                 print(f'Done fitting mode {i+1}')
             self.all_gps.append(gp)
-            y_pred = gp.predict(self.X_test)
-            r2_test = r2_score(self.y_test[:, i], y_pred)
-            self.r2s.append(round(r2_test, 3))
-            if self.verbose:
-                print(f'Prediction accuracy for mode {i+1} is {r2_test}')
+            #y_pred = gp.predict(self.X_test)
+            #r2_test = r2_score(self.y_test[:, i], y_pred)
+            #self.r2s.append(round(r2_test, 3))
+            #if self.verbose:
+            #    print(f'Prediction accuracy for mode {i+1} is {r2_test}')
+#
+        self.trained_ = True
 
-        _, _, _, self.y_test = train_test_split(self.X, self.y, train_size=0.75, random_state=42)
-
-        self.modes_fitted = True
-
-    def predict(self, X_new):
-        if not self.modes_fitted:
+    def predict(self, X_test):
+        if not self.trained_:
             raise ValueError("You must first fit the modes of the Karhunen-Loeve decomposition")
-        
-        gp_pred = np.asarray([self.all_gps[i].predict(X_new) for i in range(self.nb_modes)]).T
-        prediction = np.asarray([np.dot(gp_pred[i,:].ravel()*np.ones((self.time_discretization, 1)),
-                                         self.modes[:self.nb_modes, :])[0,:] for i in range(X_new.shape[0])])
-        
+        gp_pred = np.asarray([self.all_gps[i].predict(X_test) for i in range(self.kl_result.nb_modes)]).T
+        prediction = np.asarray([np.dot(gp_pred[i,:].ravel()*np.ones((self.kl_result.time_discretization, 1)),
+                                         self.modes[:self.kl_result.nb_modes, :])[0,:] for i in range(X_test.shape[0])])
         return prediction
-    
-    def time_varying_r2score(self):
-        if not self.modes_fitted:
-            raise ValueError('You must first fit the modes of the Karhunen-Loeve')
+        
+
+    def r2_score(self, X_test, y_test, simulation_time):
+        if not self.trained_:
+            raise ValueError("You must first fit the Karhunen-Loeve decomposition")
+        output = np.asarray(self.predict(X_test)).T
+        transposed_test = y_test.T 
+        r2scores_in_time = np.asarray([r2_score(transposed_test[i], output[i]) for i in range(len(simulation_time))])
+        return r2scores_in_time
+
+    def __sklearn_is_fitted__(self):
+        return self.trained_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['gp'] = None  # Exclude the non-picklable `self.pce` object
+        state['all_gps'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        # Recreate the `self.gp` object if training data is available
+        if self.X_train_ is not None and self.y_train_ is not None:
+            self.fit(self.X_train_, self.y_train_)
+
         
 
 class MLPMetamodel(object):

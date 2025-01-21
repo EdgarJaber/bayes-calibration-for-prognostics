@@ -18,11 +18,11 @@ class GpMetamodel(BaseEstimator):
     """
     def __init__(
         self, trend: str, kernel: str, 
-        dimension: int, noise: float = None
+        input_dimension: int, noise: float = None
     ) -> None:
         self.trend = trend
         self.kernel = kernel
-        self.dimension = dimension
+        self.input_dimension = input_dimension
         self.noise = noise
         self.trained_ = False
         self.X_train_ = None 
@@ -43,22 +43,22 @@ class GpMetamodel(BaseEstimator):
 
         # Initialize basis and kernel
         if self.trend == 'Constant':
-            basis = ot.ConstantBasisFactory(self.dimension).build()
+            basis = ot.ConstantBasisFactory(self.input_dimension).build()
         elif self.trend == 'Linear':
-            basis = ot.LinearBasisFactory(self.dimension).build()
+            basis = ot.LinearBasisFactory(self.input_dimension).build()
         elif self.trend == 'Quad':
-            basis = ot.QuadraticBasisFactory(self.dimension).build()
+            basis = ot.QuadraticBasisFactory(self.input_dimension).build()
 
         if self.kernel == 'AbsExp':
-            covarianceModel = ot.AbsoluteExponential([1.0] * self.dimension)
+            covarianceModel = ot.AbsoluteExponential([1.0] * self.input_dimension)
         elif self.kernel == 'SqExp':
-            covarianceModel = ot.SquaredExponential([1.0] * self.dimension)
+            covarianceModel = ot.SquaredExponential([1.0] * self.input_dimension)
         elif self.kernel == 'M-1/2':
-            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 0.5)
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 0.5)
         elif self.kernel == 'M-3/2':
-            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 1.5)
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 1.5)
         elif self.kernel == 'M-5/2':
-            covarianceModel = ot.MaternModel([1.0] * self.dimension, [1.0], 2.5)
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 2.5)
 
         if self.noise:
             covarianceModel.setNuggetFactor(self.noise)
@@ -74,6 +74,7 @@ class GpMetamodel(BaseEstimator):
         self.gp = self.gp_.getResult().getMetaModel()
 
         self.trained_ = True
+
 
     def predict(self, X_test, return_std=False):
         if not self.trained_:
@@ -113,7 +114,8 @@ class VPCEMetamodel(BaseEstimator):
     Comes with a fit and predict method.
     """
     def __init__(
-            self, degree: int, q_norm: float, prior: ot.Distribution,
+            self, degree: int, q_norm: float, 
+            input_dimension: int, prior: ot.Distribution,
             verbose=True
             )-> None:
         self.degree = degree
@@ -121,7 +123,7 @@ class VPCEMetamodel(BaseEstimator):
         self.verbose = verbose
         self.prior = prior
         self.prior_distribution_list = [prior]
-        self.input_dimension = 1
+        self.input_dimension = input_dimension
         self.trained_ = False
         self.X_train_ = None 
         self.y_train_ = None 
@@ -182,14 +184,15 @@ class KarhunenLoeveMetamodel(BaseEstimator):
     Karhunen-Loeve decomposition metamodel.
     """
     def __init__(
-            self, trend: str, kernel: str, simulation_time: np.array,
-            variance_explained=0.99, 
+            self, trend: str, kernel: str, input_dimension: int, simulation_time: np.array,
+            variance_explained=0.9999, 
             verbose=True
             )-> None:
         self.trend = trend
         self.kernel = kernel
+        self.input_dimension = input_dimension
         self.simulation_time = simulation_time
-        self.nb_modes = 5
+        self.nb_modes = 10
         self.explained_variance_threshold = variance_explained
         self.verbose = verbose
         self.y_decomposed = False
@@ -255,7 +258,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         self.X_train_ = X_train
         self.y_train_ = y_train
 
-        self.kl_result = self.KLResult(self.simulation_time, self.threshold, self.verbose, explained_variance=self.explained_variance_threshold)
+        self.kl_result = self.KLResult(self.simulation_time, self.threshold, nb_modes=self.nb_modes, verbose=self.verbose, explained_variance=self.explained_variance_threshold)
         self.modes = self.kl_result(y_train)
 
         y_train = np.asarray(self.kl_result.kl_algo_result.project(self.kl_result.process_sample))
@@ -267,13 +270,12 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         #else:
         #    raise ValueError("You must first decompose the output data")
         #
-        self.input_dimension = X_train.shape[1]
             
         self.all_gps = []
         self.r2s = []
 
         for i in range(self.kl_result.nb_modes): 
-            gp = GpMetamodel(trend=self.trend, kernel=self.kernel, dimension=self.input_dimension)
+            gp = GpMetamodel(trend=self.trend, kernel=self.kernel, input_dimension=self.input_dimension)
             gp.fit(X_train, y_train[:, i])
             if self.verbose:
                 print(f'Done fitting mode {i+1}')
@@ -289,9 +291,8 @@ class KarhunenLoeveMetamodel(BaseEstimator):
     def predict(self, X_test):
         if not self.trained_:
             raise ValueError("You must first fit the modes of the Karhunen-Loeve decomposition")
-        gp_pred = np.asarray([self.all_gps[i].predict(X_test) for i in range(self.kl_result.nb_modes)]).T
-        prediction = np.asarray([np.dot(gp_pred[i,:].ravel()*np.ones((self.kl_result.time_discretization, 1)),
-                                         self.modes[:self.kl_result.nb_modes, :])[0,:] for i in range(X_test.shape[0])])
+        gp_pred = np.asarray([self.all_gps[i].predict(X_test) for i in range(self.kl_result.nb_modes)])[:,:,0].T
+        prediction = np.asarray([np.dot(gp_pred[i,:].ravel()*np.ones((self.kl_result.time_discretization, 1)),self.modes[:self.kl_result.nb_modes, :])[0,:] for i in range(X_test.shape[0])])
         return prediction
         
 
@@ -310,6 +311,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         state = self.__dict__.copy()
         state['gp'] = None  # Exclude the non-picklable `self.pce` object
         state['all_gps'] = None
+        state['kl_result'] = None
         return state
 
     def __setstate__(self, state):

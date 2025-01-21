@@ -18,14 +18,17 @@ class BayesCalibrationMCMC:
             self.scaler = scaler
 
         def __call__(self, x: list) -> np.array:
-            if self.metamodel.getInputDimension() == 1:
-                return np.asarray(self.metamodel([x[0]]))
+            if self.metamodel.input_dimension == 1:
+                if self.scaler is None:
+                    return self.metamodel.predict(np.asarray([x[0]]))
+                else:
+                    return (self.metamodel.predict(self.scaler.transform(np.asarray([x[0]]).reshape(1, -1)))).reshape(-1,1)
             else:
                 data_times = []
                 for i in range(len(self.data)):
                     data_times += list(self.data[i][:, 0]*24)
                 data_times = np.asarray(sorted(data_times))
-                return np.asarray(self.metamodel(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))]))))
+                return self.metamodel.predict(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))])))
 
     class LikelihoodFunction:
         def __init__(self, data: np.array, data_time_indices: list, calib_function, discrepancy=False) -> None:

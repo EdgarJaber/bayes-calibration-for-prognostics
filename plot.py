@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 
-def plot_tpd(input_dic, y, simulation_time, label):
+def plot_tpd(axs, input_dic, y, simulation_time, label):
     """
     Plot the clogging trajectories of the PCE metamodel
 
@@ -24,7 +24,7 @@ def plot_tpd(input_dic, y, simulation_time, label):
         axes object of the plot
     """
     nrow, ncol = 1, 1
-    fig, axs = plt.subplots(nrow, ncol, figsize=(10,6), layout='tight')
+    #fig, axs = plt.subplots(nrow, ncol, figsize=(10,6), layout='tight')
 
     colors_chem_cond = {'C1': {'name': r'$\chi_{1}$', 'low': 'gainsboro', 'high': 'silver'},
                       'C2': {'name': r'$\chi_{2}$', 'high': 'darkgray'}}
@@ -45,11 +45,15 @@ def plot_tpd(input_dic, y, simulation_time, label):
     #Clogging trajectories
     axs.grid()
     n = y.shape[0]
-
-    for i in range(n):   
-        axs.plot(simulation_time, y[i], c='g', alpha=0.1)
-        if i == n-1:
-            axs.plot(simulation_time, y[i], c='g', alpha=0.1, label=label)
+    d = y.shape[1]
+    
+    if d > 1:
+        for i in range(n):   
+            axs.plot(simulation_time, y[i], c='g', alpha=0.1)
+            if i == n-1:
+                axs.plot(simulation_time, y[i], c='g', alpha=0.5, label=label)
+    else:
+        axs.scatter(simulation_time, y, c='g', s=5, label=label, zorder=10)
 
     axs.set_xlim(250,17500)
     axs.set_ylim(0,100)
@@ -73,4 +77,4 @@ def plot_tpd(input_dic, y, simulation_time, label):
     #lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     #fig.legend(lines, labels, bbox_to_anchor=(-0.01,0.9), fontsize=20)
 
-    return fig, axs
+    return axs

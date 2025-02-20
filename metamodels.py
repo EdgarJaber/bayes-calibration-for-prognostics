@@ -115,14 +115,14 @@ class VPCEMetamodel(BaseEstimator):
     """
     def __init__(
             self, degree: int, q_norm: float, 
-            input_dimension: int, prior: ot.Distribution,
+            input_dimension: int, prior_distribution_list: list,
             verbose=True
             )-> None:
         self.degree = degree
         self.q_norm = q_norm
         self.verbose = verbose
-        self.prior = prior
-        self.prior_distribution_list = [prior]
+        #self.prior = prior
+        self.prior_distribution_list = prior_distribution_list
         self.input_dimension = input_dimension
         self.trained_ = False
         self.X_train_ = None 
@@ -185,7 +185,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
     """
     def __init__(
             self, trend: str, kernel: str, input_dimension: int, simulation_time: np.array,
-            variance_explained=0.9999, 
+            explained_variance_threshold=0.9999, 
             verbose=True
             )-> None:
         self.trend = trend
@@ -193,7 +193,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         self.input_dimension = input_dimension
         self.simulation_time = simulation_time
         self.nb_modes = 10
-        self.explained_variance_threshold = variance_explained
+        self.explained_variance_threshold = explained_variance_threshold
         self.verbose = verbose
         self.y_decomposed = False
         self.trained_ = False

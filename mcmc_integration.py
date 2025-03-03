@@ -26,21 +26,21 @@ class BayesCalibrationMCMC:
             self.scaler = scaler
 
         def __call__(self, x: list) -> np.array:
-            if self.metamodel.input_dimension == 1:
-                time_indices = []
-                for i in range(len(self.data_time_indices)):
-                    time_indices += list(self.data_time_indices[i])
-                time_indices = np.asarray(sorted(time_indices))
-                if self.scaler is None:
-                    return (np.asarray(self.metamodel.predict(np.asarray([x[0]]))).reshape(-1,1))[time_indices]
-                else:
-                    return ((self.metamodel.predict(self.scaler.transform(np.asarray([x[0]]).reshape(1, -1)))).reshape(-1,1))[time_indices]
+            #if self.metamodel.input_dimension == 1:
+            time_indices = []
+            for i in range(len(self.data_time_indices)):
+                time_indices += list(self.data_time_indices[i])
+            time_indices = np.asarray(sorted(time_indices))
+            if self.scaler is None:
+                return (np.asarray(self.metamodel.predict(np.asarray([x[0]]))).reshape(-1,1))[time_indices]
             else:
-                data_times = []
-                for i in range(len(self.data)):
-                    data_times += list(self.data[i][:, 0]*24)
-                data_times = np.asarray(sorted(data_times))
-                return self.metamodel.predict(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))])))
+                return ((self.metamodel.predict(self.scaler.transform(np.asarray([x[0]]).reshape(1, -1)))).reshape(-1,1))[time_indices]
+            #else:
+            #    data_times = []
+            #    for i in range(len(self.data)):
+            #        data_times += list(self.data[i][:, 0]*24)
+            #    data_times = np.asarray(sorted(data_times))
+            #    return self.metamodel.predict(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))])))
             
     class LikelihoodFunction:
         def __init__(self, data: np.array, data_time_indices: list, calibration_functions: list, nb_weights: int, discrepancy=False

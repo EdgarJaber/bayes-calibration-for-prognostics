@@ -5,6 +5,7 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
+from sklearn.base import clone
 
 #import torch
 #import torch.nn as nn
@@ -76,19 +77,13 @@ class GpMetamodel(BaseEstimator):
         self.trained_ = True
 
 
-    def predict(self, X_test, return_std=False):
+    def predict(self, X_test):
         if not self.trained_:
             raise ValueError("The model has not been trained yet.")
         
         y_pred = self.gp(X_test)
 
-        #y_pred = metamodel.getMean()
-        #y_std = metamodel.getStandardDeviation()
-
-        #if not return_std:
-        #    return np.array(y_pred)
-        #else:
-        return np.array(y_pred)#, np.array(y_std)
+        return np.array(y_pred)
 
     def __sklearn_is_fitted__(self):
         return self.trained_
@@ -105,6 +100,103 @@ class GpMetamodel(BaseEstimator):
         # Recreate the `self.gp` object if training data is available
         if self.X_train_ is not None and self.y_train_ is not None:
             self.fit(self.X_train_, self.y_train_)
+
+
+
+class GpMetamodelInd(BaseEstimator):
+    """
+    Wrapper for OpenTURNS Gaussian Process.
+    """
+    def __init__(
+        self, trend: str, kernel: str, 
+        input_dimension: int, noise: float = None, index = None
+    ) -> None:
+        self.trend = trend
+        self.kernel = kernel
+        self.input_dimension = input_dimension
+        self.noise = noise
+        self.trained_ = False
+        self.X_train_ = None 
+        self.y_train_ = None 
+        self.index = index
+
+    def fit(self, X_train, y_train):
+
+        # Validate inputs
+        if self.trend not in ['Constant', 'Linear', 'Quad']:
+            raise ValueError(f"trend must be one of ['Constant', 'Linear', 'Quad']")
+
+        if self.kernel not in ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']:
+            raise ValueError(f"kernel must be one of ['AbsExp', 'SqExp', 'M-1/2', 'M-3/2', 'M-5/2']")
+
+        # Save training data for later use
+        self.X_train_ = X_train
+        self.y_train_ = y_train
+
+        # Initialize basis and kernel
+        if self.trend == 'Constant':
+            basis = ot.ConstantBasisFactory(self.input_dimension).build()
+        elif self.trend == 'Linear':
+            basis = ot.LinearBasisFactory(self.input_dimension).build()
+        elif self.trend == 'Quad':
+            basis = ot.QuadraticBasisFactory(self.input_dimension).build()
+
+        if self.kernel == 'AbsExp':
+            covarianceModel = ot.AbsoluteExponential([1.0] * self.input_dimension)
+        elif self.kernel == 'SqExp':
+            covarianceModel = ot.SquaredExponential([1.0] * self.input_dimension)
+        elif self.kernel == 'M-1/2':
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 0.5)
+        elif self.kernel == 'M-3/2':
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 1.5)
+        elif self.kernel == 'M-5/2':
+            covarianceModel = ot.MaternModel([1.0] * self.input_dimension, [1.0], 2.5)
+
+        if self.noise:
+            covarianceModel.setNuggetFactor(self.noise)
+
+        # Initialize and run the GP model
+        self.gp_ = ot.KrigingAlgorithm(
+            ot.Sample(X_train),
+            ot.Sample(y_train.reshape(-1, 1)),
+            covarianceModel, basis
+        )
+        self.gp_.run()
+
+        self.gp = self.gp_.getResult().getMetaModel()
+
+        self.trained_ = True
+
+    def predict(self, X_test):
+        if not self.trained_:
+            raise ValueError("The model has not been trained yet.")
+        if self.index != None:
+            X_ = self.X_train_.mean(axis=0)
+            X_ = np.tile(X_, (X_test.shape[0], 1))
+            X_[:, self.index] = X_test
+            X_test = X_
+            y_pred = self.gp(X_test)
+        else:
+            y_pred = self.gp(X_test)
+        return np.array(y_pred)
+
+    def __sklearn_is_fitted__(self):
+        return self.trained_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['gp_'] = None  # Exclude the non-picklable `self.gp` object
+        state['gp'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        # Recreate the `self.gp` object if training data is available
+        if self.X_train_ is not None and self.y_train_ is not None:
+            self.fit(self.X_train_, self.y_train_)
+
+
 
 
 
@@ -184,12 +276,11 @@ class KarhunenLoeveMetamodel(BaseEstimator):
     Karhunen-Loeve decomposition metamodel.
     """
     def __init__(
-            self, trend: str, kernel: str, input_dimension: int, simulation_time: np.array,
+            self, metamodel: object, input_dimension: int, simulation_time: np.array,
             explained_variance_threshold=0.9999, 
             verbose=True
             )-> None:
-        self.trend = trend
-        self.kernel = kernel
+        self.metamodel = metamodel
         self.input_dimension = input_dimension
         self.simulation_time = simulation_time
         self.nb_modes = 10
@@ -202,7 +293,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         self.y_train = None
 
     class KLResult:
-        def __init__(self, simulation_time:np.array, threshold=1.0e-7, nb_modes=5, verbose=True, explained_variance=0.99
+        def __init__(self, simulation_time:np.array, threshold=1.0e-7, nb_modes=10, verbose=True, explained_variance=0.99
         ) -> None:
             self.simulation_time = simulation_time
             self.threshold = threshold
@@ -237,10 +328,6 @@ class KarhunenLoeveMetamodel(BaseEstimator):
             self.eigenfunctions = self.kl_algo_result.getScaledModesAsProcessSample()
             self.eigenvalues = self.kl_algo_result.getEigenvalues()
 
-            self.modes = np.asarray([[self.eigenfunctions.getSampleAtVertex(i)[j][0] for i in range(self.time_discretization)] for j in range(self.nb_modes)])
-
-            self.y_decomposed = True
-
             eigval_square = np.asarray(self.eigenvalues)**2
             for i in range(self.eigenvalues.getDimension()):
                 self.explained_variance = eigval_square[:i].sum()/eigval_square.sum()
@@ -250,11 +337,15 @@ class KarhunenLoeveMetamodel(BaseEstimator):
             if self.verbose:
                 print(f"Explained variance for {i} modes is {self.explained_variance}")
 
+            self.modes = np.asarray([[self.eigenfunctions.getSampleAtVertex(i)[j][0] for i in range(self.time_discretization)] for j in range(self.nb_modes)])
+
+            self.y_decomposed = True
+
             return self.modes
 
 
     def fit(self, X_train, y_train):
-
+        
         self.X_train_ = X_train
         self.y_train_ = y_train
 
@@ -262,37 +353,24 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         self.modes = self.kl_result(y_train)
 
         y_train = np.asarray(self.kl_result.kl_algo_result.project(self.kl_result.process_sample))
-
-        #if self.y_decomposed:
-        #    if self.nb_modes > self.eigenvalues.getDimension():
-        #        raise ValueError("Number of modes must be less than the dimension of the Karhunen-Loeve decomposition")
-        #    new_y = np.asarray(self.kl_result.project(self.process_sample))
-        #else:
-        #    raise ValueError("You must first decompose the output data")
-        #
             
-        self.all_gps = []
+        self.all_metamodels = []
         self.r2s = []
 
         for i in range(self.kl_result.nb_modes): 
-            gp = GpMetamodel(trend=self.trend, kernel=self.kernel, input_dimension=self.input_dimension)
-            gp.fit(X_train, y_train[:, i])
+            mm = clone(self.metamodel)
+            mm.fit(X_train, y_train[:, i].reshape(-1,1))            
             if self.verbose:
                 print(f'Done fitting mode {i+1}')
-            self.all_gps.append(gp)
-            #y_pred = gp.predict(self.X_test)
-            #r2_test = r2_score(self.y_test[:, i], y_pred)
-            #self.r2s.append(round(r2_test, 3))
-            #if self.verbose:
-            #    print(f'Prediction accuracy for mode {i+1} is {r2_test}')
-#
+            self.all_metamodels.append(mm)
+
         self.trained_ = True
 
     def predict(self, X_test):
         if not self.trained_:
             raise ValueError("You must first fit the modes of the Karhunen-Loeve decomposition")
-        gp_pred = np.asarray([self.all_gps[i].predict(X_test) for i in range(self.kl_result.nb_modes)])[:,:,0].T
-        prediction = np.asarray([np.dot(gp_pred[i,:].ravel()*np.ones((self.kl_result.time_discretization, 1)),self.modes[:self.kl_result.nb_modes, :])[0,:] for i in range(X_test.shape[0])])
+        mm_pred = np.asarray([self.all_metamodels[i].predict(X_test) for i in range(self.kl_result.nb_modes)])[:,:,0].T
+        prediction = np.asarray([np.dot(mm_pred[i,:].ravel()*np.ones((self.kl_result.time_discretization, 1)),self.modes[:self.kl_result.nb_modes, :])[0,:] for i in range(X_test.shape[0])])
         return prediction
         
 
@@ -309,8 +387,8 @@ class KarhunenLoeveMetamodel(BaseEstimator):
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        state['gp'] = None  # Exclude the non-picklable `self.pce` object
-        state['all_gps'] = None
+        state['mm'] = None  # Exclude the non-picklable `self.mm` object
+        state['all_metamodels'] = None
         state['kl_result'] = None
         return state
 

@@ -53,29 +53,41 @@ class BayesCalibrationMCMC:
 
         def __call__(self) -> ot.PythonFunction:
             # Define the log-likelihood function
-            def log_likelihood(x) -> float:
-                
-                #w1+...+wp = 1 simplex :D :D :D
-                dirichlet_weights = sample_positive_l1_sphere(len(self.calibration_functions), self.nb_weights)
+            if len(self.calibration_functions) > 1:      
+                def log_likelihood(x) -> float:
+                    #w1+...+wp = 1 simplex :D :D :D
+                    dirichlet_weights = sample_positive_l1_sphere(len(self.calibration_functions), self.nb_weights)
 
-                cal_funcs = ((np.asarray([np.asarray((self.calibration_functions)[i](x)) for i in range(len(self.calibration_functions))])).T)[0,:,:]
+                    cal_funcs = ((np.asarray([np.asarray((self.calibration_functions)[i](x)) for i in range(len(self.calibration_functions))])).T)[0,:,:]
+
+                    # dot product of the weights and the calibration functions
+                    model_output = dirichlet_weights @ cal_funcs.T
+
+                    log_likelihoods = []
+                    for i in range(self.nb_weights):
+                        log_pdf = 0
+                        for j in range(len(self.data)):
+                            diff = self.data[j][:, 1] - model_output[i][self.data_time_indices[j]] 
+                            log_pdf += -np.log(np.sum(diff**2)) * len(diff) / 2.0
+                        log_likelihoods.append(log_pdf)
+                    max_logs = np.max(np.asarray(log_likelihoods))
+
+                    # Compute the log-likelihood using logsumexp trick
+                    log_pdf = max_logs + np.log(np.sum(np.exp(np.asarray(log_likelihoods)) - max_logs)) - np.log(self.nb_weights)
+                    return [log_pdf]
                 
-                # dot product of the weights and the calibration functions
-                model_output = dirichlet_weights @ cal_funcs.T
-                
-                log_likelihoods = []
-                for i in range(self.nb_weights):
+            else:
+                print('Only one calibration function')
+                def log_likelihood(x) -> float:
                     log_pdf = 0
-                    for j in range(len(self.data)):
-                        diff = self.data[j][:, 1] - model_output[i][self.data_time_indices[j]] 
+                    # Iterate over all data types
+                    for i in range(len(self.data)):
+                        # Compute the difference between data and the calibration model output
+                        model_output = self.calibration_functions[0](x)
+                        diff = self.data[i][:, 1] - model_output[self.data_time_indices[i]] 
+                        # Compute the log-likelihood
                         log_pdf += -np.log(np.sum(diff**2)) * len(diff) / 2.0
-                    log_likelihoods.append(log_pdf)
-                max_logs = np.max(np.asarray(log_likelihoods))
-
-                # Compute the log-likelihood using logsumexp trick
-                log_pdf = max_logs + np.log(np.sum(np.exp(np.asarray(log_likelihoods)) - max_logs)) - np.log(self.nb_weights)
-
-                return [log_pdf]
+                    return [log_pdf]
 
             # Wrap the log-likelihood function in an OpenTURNS PythonFunction
             return ot.PythonFunction(1, 1, log_likelihood)

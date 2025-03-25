@@ -401,92 +401,92 @@ class KarhunenLoeveMetamodel(BaseEstimator):
 
         
 
-class MLPMetamodel(object):
-    """
-    Artificial Neural Network metamodel.
-    """
-    def __init__(
-            self, input_size=1, hidden_layer_size=10, output_size=1,
-            solver='adam', alpha=0.0001, batch_size=100, 
-            learning_rate='constant', learning_rate_init=0.001, 
-            max_iter=200, verbose=True
-            )-> None:
-        self.hidden_layer_size = hidden_layer_size
-        self.solver = solver
-        self.alpha = alpha
-        self.batch_size = batch_size
-        self.learning_rate = learning_rate
-        self.learning_rate_init = learning_rate_init
-        self.max_iter = max_iter
-        self.verbose = verbose
-        self.trained_ = False
-
-    def fit(self, X, y):
-
-        class MLP(nn.Module):
-            def __init__(self, input_size, hidden_size, output_size):
-                super(MLP, self).__init__()
-                self.fc1 = nn.Linear(input_size, hidden_size)
-                self.relu1 = nn.ReLU()
-                self.fc2 = nn.Linear(hidden_size, hidden_size)
-                self.relu2 = nn.Sigmoid()
-                self.fc3 = nn.Linear(hidden_size, output_size)
-
-            def forward(self, x):
-                x = self.fc1(x)
-                x = self.relu1(x)
-                x = self.fc2(x)
-                x = self.relu2(x)
-                x = self.fc3(x)
-                return x
-
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, train_size=0.75, random_state=42)
-
-        self.X_train, self.y_train = torch.tensor(self.X_train), torch.tensor(self.y_train)
-
-        dataset = TensorDataset(self.X_train, self.y_train)
-        data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True) 
-
-        # Initialize model, loss, and optimizer
-        self.ann = MLP(self.input_size, self.hidden_layer_size, self.output_size)
-        criterion = nn.MSELoss()  # Use CrossEntropyLoss for classification
-
-        if self.solver == 'adam':
-            optimizer = optim.Adam(self.ann.parameters(), lr=self.learning_rate_init)
-        elif self.solver == 'sgd':
-            optimizer = optim.SGD(self.ann.parameters(), lr=self.learning_rate_init)
-        
-        self.losses = []
-        if self.verbose:
-            print("Training Artificial Neural Network")
-        for epoch in range(self.max_iter):
-            for inputs, labels in data_loader:
-
-                inputs = inputs.float()
-                labels = labels.float() 
-                # Forward pass
-                outputs = self.ann(inputs)
-                loss = criterion(outputs, labels)
-                # Backward pass
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-            self.losses.append(loss.item())
-
-            if self.verbose:
-                print(f"Epoch [{epoch+1}/{self.max_iter}], Loss: {loss.item():.4f}")
-                
-        self.trained_ = True
-
-    def predict(self, X_new):
-        if not self.trained_:
-            raise ValueError("You must first fit the Artificial Neural Network")
-        y_pred = self.ann(X_new)
-        return y_pred
-
-    def r2_score(self):
-        if not self.trained_:
-            raise ValueError("You must first fit the Artificial Neural Network")
-        output = self.predict(self.X_test).T
-        transposed_test = self.y_test.T 
-        r2scores_in_time = np
+#class MLPMetamodel(object):
+#    """
+#    Artificial Neural Network metamodel.
+#    """
+#    def __init__(
+#            self, input_size=1, hidden_layer_size=10, output_size=1,
+#            solver='adam', alpha=0.0001, batch_size=100, 
+#            learning_rate='constant', learning_rate_init=0.001, 
+#            max_iter=200, verbose=True
+#            )-> None:
+#        self.hidden_layer_size = hidden_layer_size
+#        self.solver = solver
+#        self.alpha = alpha
+#        self.batch_size = batch_size
+#        self.learning_rate = learning_rate
+#        self.learning_rate_init = learning_rate_init
+#        self.max_iter = max_iter
+#        self.verbose = verbose
+#        self.trained_ = False
+#
+#    def fit(self, X, y):
+#
+#        class MLP(nn.Module):
+#            def __init__(self, input_size, hidden_size, output_size):
+#                super(MLP, self).__init__()
+#                self.fc1 = nn.Linear(input_size, hidden_size)
+#                self.relu1 = nn.ReLU()
+#                self.fc2 = nn.Linear(hidden_size, hidden_size)
+#                self.relu2 = nn.Sigmoid()
+#                self.fc3 = nn.Linear(hidden_size, output_size)
+#
+#            def forward(self, x):
+#                x = self.fc1(x)
+#                x = self.relu1(x)
+#                x = self.fc2(x)
+#                x = self.relu2(x)
+#                x = self.fc3(x)
+#                return x
+#
+#        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, train_size=0.75, random_state=42)
+#
+#        self.X_train, self.y_train = torch.tensor(self.X_train), torch.tensor(self.y_train)
+#
+#        dataset = TensorDataset(self.X_train, self.y_train)
+#        data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True) 
+#
+#        # Initialize model, loss, and optimizer
+#        self.ann = MLP(self.input_size, self.hidden_layer_size, self.output_size)
+#        criterion = nn.MSELoss()  # Use CrossEntropyLoss for classification
+#
+#        if self.solver == 'adam':
+#            optimizer = optim.Adam(self.ann.parameters(), lr=self.learning_rate_init)
+#        elif self.solver == 'sgd':
+#            optimizer = optim.SGD(self.ann.parameters(), lr=self.learning_rate_init)
+#        
+#        self.losses = []
+#        if self.verbose:
+#            print("Training Artificial Neural Network")
+#        for epoch in range(self.max_iter):
+#            for inputs, labels in data_loader:
+#
+#                inputs = inputs.float()
+#                labels = labels.float() 
+#                # Forward pass
+#                outputs = self.ann(inputs)
+#                loss = criterion(outputs, labels)
+#                # Backward pass
+#                optimizer.zero_grad()
+#                loss.backward()
+#                optimizer.step()
+#            self.losses.append(loss.item())
+#
+#            if self.verbose:
+#                print(f"Epoch [{epoch+1}/{self.max_iter}], Loss: {loss.item():.4f}")
+#                
+#        self.trained_ = True
+#
+#    def predict(self, X_new):
+#        if not self.trained_:
+#            raise ValueError("You must first fit the Artificial Neural Network")
+#        y_pred = self.ann(X_new)
+#        return y_pred
+#
+#    def r2_score(self):
+#        if not self.trained_:
+#            raise ValueError("You must first fit the Artificial Neural Network")
+#        output = self.predict(self.X_test).T
+#        transposed_test = self.y_test.T 
+#        r2scores_in_time = np

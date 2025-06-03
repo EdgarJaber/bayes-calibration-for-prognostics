@@ -1,17 +1,17 @@
 # Introduction
 
-This is the reproducible code for the paper *Offline assimilation of Multifidelity Data for Robust Degradation Prognostics*, preprint available here...
+This is the reproducible code for the paper *Fusion of heterogeneous data for robust degradation prognostics*, preprint available [here](https://edgarjaber.github.io/assets/pdfs/ress_fusion_25.pdf)
 
 To cite this work please use the following BibTeX entry:
 ```
 @misc{jaber2025,
-  author  = {Jaber, E. and Chabridon, V. and Remy, E. and Mougeot, M. and Lucor, D. and Keller, M. and Pelamatti, J. and Baudin, M.},
-  title   = {{Offline assimilation of Multifidelity Data for Robust Degradation Prognostics}},
+  author  = {Jaber, E. and Remy, E. and Chabridon, V. and Mougeot, M. and Lucor},
+  title   = {{Fusion of heterogeneous data for robust degradation prognostics}},
   arxiv = {},
   year  = {2025}
 }
 ```
-This article proposes a methodology for assimilating sparse and multifidelity degradation data into a simulation model. It relies on kernel sensitivity analysis HSIC-based indices as well as a specific Bayesian likelihood using different priors for the noise. It then makes use of RWMH-MCMC for sampling in this tailored posterior distribution. 
+This article proposes a methodology for assimilating sparse and heterogeneous degradation data into a simulation model. It relies on kernel sensitivity analysis HSIC-based indices as well as a specific Bayesian likelihood using different priors for the noise. It then makes use of RWMH-MCMC for sampling in this tailored posterior distribution. 
 If the degradation simulation model is expensive to evaluate, we rely on Karhunèn-Loève-based time-varying surrogate models and the methodology can also integrate multiple equally valid surrogates to overcome possible surrogate bias. Robust prediction of probabilistic remaining useful life for the asset under consideration can then be made.
 
 ![General Scheme](plots/FIG1_general_scheme.png)
@@ -31,7 +31,7 @@ The essential Python library used for the different scripts is the UQ library: [
 - [mcmc.py](mcmc.py): Python class implementing the RWMH-MCMC sampling of the posterior distribution as explained in the article
 
 We run our methodology on two cases:
--    The Paris' law which is an ODE-based degradation model of crack propagation. We run the methodology on a fictitious material with an explicit Euler implementation of the model, available in [this notebook](methodology_crack_growth.ipynb)
+-    The Paris-Erdogan's law which is an ODE-based degradation model of crack propagation. We run the methodology on a fictitious material with an explicit Euler implementation of the model, available in [this notebook](methodology_crack_growth.ipynb)
 - The THYC-Puffer-DEPO clogging simulator for steam generators in pressurized-water-reactors. To protect the industrial secrecy, the ```DATA``` folder is encrypted (see end of README), one run available in [this notebook](methodology_clogging.ipynb)
 
 
@@ -44,5 +44,5 @@ To request the clogging data, write to
 {surname}.{lastname}@edf.fr
 ```
 where 
-```surname = vincent, emmanuel, merlin, julien, michael``` 
- & ```lastname = chabridon, remy, keller, pelamatti, baudin```
+```surname = vincent, emmanuel``` 
+ & ```lastname = chabridon, remy```

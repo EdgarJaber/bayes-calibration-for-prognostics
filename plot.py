@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 
-def plot_tpd(axs, input_dic, y, simulation_time, label):
+def plot_tpd(axs, input_dic, y, simulation_time, label, color):
     """
     Plot the clogging trajectories of the PCE metamodel
 
@@ -49,9 +49,9 @@ def plot_tpd(axs, input_dic, y, simulation_time, label):
     
     if d > 1:
         for i in range(n):   
-            axs.plot(simulation_time, y[i], c='g', alpha=0.1)
+            axs.plot(simulation_time, y[i], c=color, alpha=0.1)
             if i == n-1:
-                axs.plot(simulation_time, y[i], c='g', alpha=0.5, label=label)
+                axs.plot(simulation_time, y[i], c=color, alpha=0.5, label=label)
     else:
         axs.scatter(simulation_time, y, c='g', s=5, label=label, zorder=10)
 

@@ -1,14 +1,16 @@
 # Introduction
 
-This is the reproducible code for the paper *Fusion of heterogeneous data for robust degradation prognostics*, preprint available [here](https://edgarjaber.github.io/assets/pdfs/ress_fusion_25.pdf)
+This is the reproducible code for the paper *Fusion of heterogeneous data for robust degradation prognostics* published in Reliability Engineering and System Safety, and whose preprint is available [here](https://edgarjaber.github.io/assets/pdfs/ress_fusion_25.pdf)
 
-To cite this work please use the following BibTeX entry:
+To cite this work, please use the following BibTeX entry:
 ```
-@misc{jaber2025,
-  author  = {Jaber, E. and Remy, E. and Chabridon, V. and Mougeot, M. and Lucor},
-  title   = {{Fusion of heterogeneous data for robust degradation prognostics}},
-  arxiv = {},
-  year  = {2025}
+@article{Jaber2026,
+    title   = {{Fusion of heterogeneous data for robust degradation prognostics}},
+    author  = {Jaber, E. and Remy, E. and Chabridon, V. and Mougeot, M. and Lucor, D.}
+    journal = {Reliability Engineering \& System Safety},
+    doi     = {https://doi.org/10.1016/j.ress.2026.112435},
+    pages   = {112435},
+    year    = {2026},
 }
 ```
 This article proposes a methodology for assimilating sparse and heterogeneous degradation data into a simulation model. It relies on kernel sensitivity analysis HSIC-based indices as well as a specific Bayesian likelihood using different priors for the noise. It then makes use of RWMH-MCMC for sampling in this tailored posterior distribution. 

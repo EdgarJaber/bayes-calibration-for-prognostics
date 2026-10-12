@@ -202,6 +202,7 @@ def compute_prognostics_stages(
     split_sim_hours: int,
     prognostics_split_hours: int,
     n_rul_samples: int = 1000,
+    posterior_samples: list | None = None,
 ) -> PrognosticsStages:
     """Build the prior/BMU/BMU+EnKS trajectory ensembles from completed cycles.
 
@@ -219,6 +220,9 @@ def compute_prognostics_stages(
         dataset for an observation-size sweep) -- passed to the EnKS smoother.
     split_sim_hours, prognostics_split_hours, n_rul_samples :
         See :func:`run_observation_size`.
+    posterior_samples : list of arrays, optional
+        One ``(n, input_dimension)`` array per cycle. When given, they are used instead of
+        sampling ``cycle_results[i].marginals`` (e.g. posterior samples read back from disk).
 
     Notes
     -----
@@ -233,13 +237,14 @@ def compute_prognostics_stages(
     sim_time = pipe.dataset.simulation_time
 
     # --- posterior samples per cycle --------------------------------------- #
-    posterior_samples = [
-        np.asarray([
-            np.asarray(m.getSample(n_rul_samples)).reshape(-1)
-            for m in res.marginals
-        ]).T
-        for res in cycle_results
-    ]
+    if posterior_samples is None:
+        posterior_samples = [
+            np.asarray([
+                np.asarray(m.getSample(n_rul_samples)).reshape(-1)
+                for m in res.marginals
+            ]).T
+            for res in cycle_results
+        ]
 
     # --- concatenated BMU trajectory --------------------------------------- #
     nc = _hours_to_index(sim_time, split_sim_hours, "split_sim_hours")

@@ -1,0 +1,43 @@
+{
+  "common": {
+    "base_directory": "DATA/",
+    "input_dimension": 7,
+    "n_doe_samples": 1000,
+    "unit": "days",
+    "n_rul_samples": 1000,
+    "n_chains": 3,
+    "nb_weights": 1024,
+    "sample_size": 1000,
+    "burn_in": 100
+  },
+  "steam_generators": [
+    {
+      "display": "SG A",
+      "sg_tag": "SGA",
+      "n_cycles": 3,
+      "split_sim_hours": 221938,
+      "prognostics_split_hours": 222168,
+      "obs_sizes": [
+        0,
+        2,
+        5,
+        9
+      ],
+      "label": "tab:esticol_sweep_sga"
+    },
+    {
+      "display": "SG B",
+      "sg_tag": "SGB",
+      "n_cycles": 2,
+      "split_sim_hours": 176568,
+      "prognostics_split_hours": 176808,
+      "obs_sizes": [
+        0,
+        20,
+        40,
+        61
+      ],
+      "label": "tab:esticol_sweep_sgb"
+    }
+  ]
+}

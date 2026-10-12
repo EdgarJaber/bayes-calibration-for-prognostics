@@ -30,7 +30,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..")))                 # 
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "..")))     # bayes_fusion
 
 from bayes_fusion.prognostics import first_crossing_rul
-from clogging_prognostics import CloggingPipeline, PipelineConfig, smooth_cycles
+from clogging_prognostics import (CloggingPipeline, PipelineConfig, load_thresholds,
+                                  smooth_cycles)
 from clogging_prognostics.experiment import (RULStats, _hours_to_index,
                                              truncate_last_cycle_observations)
 
@@ -39,7 +40,8 @@ def build_pipeline(common, sg):
     cfg = PipelineConfig(base_directory=common["base_directory"],
                          input_dimension=common.get("input_dimension", 7),
                          n_doe_samples=common.get("n_doe_samples", 1000),
-                         n_cycles=sg["n_cycles"], clogging_threshold=sg["threshold"])
+                         n_cycles=sg["n_cycles"],
+                         clogging_threshold=load_thresholds(common["base_directory"])[sg["sg_tag"]])
     return CloggingPipeline(cfg).setup(sg_tag=sg["sg_tag"])
 
 
@@ -114,12 +116,12 @@ def main():
         names = pipe.cfg.prior.names
 
         post = read_posteriors(args.results, tag, names, sg["n_cycles"])
-        rows = analyse(pipe, pipe.dataset, post, sg["split_sim_hours"], sg["prognostics_split_hours"],
-                       sg["threshold"])
+        thr = pipe.cfg.clogging_threshold
+        rows = analyse(pipe, pipe.dataset, post, sg["split_sim_hours"], sg["prognostics_split_hours"], thr)
         saved = os.path.join(args.results, "trajectories")
         t_saved = np.load(os.path.join(saved, f"{tag}_bmu_enks_time.npy"))
         traj_saved = np.load(os.path.join(saved, f"{tag}_bmu_enks.npy"))
-        r_saved = first_crossing_rul(traj_saved, t_saved, sg["threshold"])
+        r_saved = first_crossing_rul(traj_saved, t_saved, thr)
         rows.append(stats_row("BMU+EnKS (saved by the experiment)", r_saved, len(traj_saved)))
         all_rows += [dict(sg=sg["display"], run="full data", k=None, **r) for r in rows]
 
@@ -129,11 +131,10 @@ def main():
         for k in ssg["obs_sizes"]:
             ds, _ = truncate_last_cycle_observations(pipe.dataset, k)
             post = read_posteriors(args.sweep, f"{tag}_k{k:04d}", names, ssg["n_cycles"])
-            rows = analyse(pipe, ds, post, ssg["split_sim_hours"], ssg["prognostics_split_hours"],
-                           ssg["threshold"])
+            rows = analyse(pipe, ds, post, ssg["split_sim_hours"], ssg["prognostics_split_hours"], thr)
             t_saved = np.load(os.path.join(args.sweep, "trajectories", f"{tag}_k{k:04d}_bmu_enks_time.npy"))
             traj_saved = np.load(os.path.join(args.sweep, "trajectories", f"{tag}_k{k:04d}_bmu_enks.npy"))
-            r_saved = first_crossing_rul(traj_saved, t_saved, ssg["threshold"])
+            r_saved = first_crossing_rul(traj_saved, t_saved, thr)
             rows.append(stats_row("BMU+EnKS (saved by the experiment)", r_saved, len(traj_saved)))
             all_rows += [dict(sg=ssg["display"], run="sweep", k=k, **r) for r in rows]
         print(f"{sg['display']} done", flush=True)

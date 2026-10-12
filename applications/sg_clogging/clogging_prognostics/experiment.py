@@ -288,6 +288,12 @@ def compute_prognostics_stages(
     )
 
 
+def _threshold(cfg) -> float:
+    if cfg.clogging_threshold is None:
+        raise ValueError("cfg.clogging_threshold is not set: use clogging_prognostics.load_thresholds().")
+    return cfg.clogging_threshold
+
+
 def _assimilate_observation_size(
     pipe,
     k: int,
@@ -373,7 +379,7 @@ def run_observation_size(
     _, stages = _assimilate_observation_size(
         pipe, k, split_sim_hours, prognostics_split_hours, n_rul_samples, selection,
     )
-    return list(stages.rul_stats(pipe.cfg.clogging_threshold, k).values())
+    return list(stages.rul_stats(_threshold(pipe.cfg), k).values())
 
 
 def run_observation_size_with_stages(
@@ -397,7 +403,7 @@ def run_observation_size_with_stages(
     cycle_results, stages = _assimilate_observation_size(
         pipe, k, split_sim_hours, prognostics_split_hours, n_rul_samples, selection,
     )
-    stats = list(stages.rul_stats(pipe.cfg.clogging_threshold, k).values())
+    stats = list(stages.rul_stats(_threshold(pipe.cfg), k).values())
     return stats, cycle_results, stages
 
 

@@ -13,7 +13,6 @@
   "steam_generator": {
     "display": "SG B",
     "sg_tag": "SGB",
-    "threshold": 60.0,
     "n_cycles": 2,
     "split_sim_hours": 176568,
     "prognostics_split_hours": 176808,

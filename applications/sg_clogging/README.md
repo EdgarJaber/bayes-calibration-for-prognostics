@@ -2,7 +2,8 @@
 
 Application of [`bayes_fusion`](../../bayes_fusion) to the clogging of the steam generators (SG) of
 pressurized-water reactors, simulated with THYC-Puffer-DEPO. Two SGs are provided, **SG A** (tag `SGA`,
-failure threshold X %) and **SG B** (tag `SGB`, threshold X %).
+failure threshold $\tau_c^{\ast,A}$) and **SG B** (tag `SGB`, failure threshold $\tau_c^{\ast,B}$). The threshold
+values are read from `DATA/thresholds.json` and appear nowhere in the code.
 
 The industrial data are **not** distributed: put them in [`DATA/`](DATA) (git-ignored, see
 [DATA/README.md](DATA/README.md)). Install the package once with `pip install -e ../..`, then run
@@ -12,7 +13,7 @@ everything **from this folder**: `DATA/`, `configs/` and `results*/` are relativ
 
 ```
 clogging_prognostics/   the application package: data loading, pipeline, experiments, EnKS over cycles
-configs/                one JSON per experiment: SG tags, thresholds, window anchors, MCMC settings
+configs/                one JSON per experiment: SG tags, window anchors, MCMC settings
 scripts/                the three experiments (python entry points)
 run.sh                  detached launcher for the scripts (see below)
 notebooks/              analysis and figure notebooks

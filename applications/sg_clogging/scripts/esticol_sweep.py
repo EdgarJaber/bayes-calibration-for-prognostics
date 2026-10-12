@@ -48,8 +48,8 @@ APP = os.path.abspath(os.path.join(HERE, '..'))                       # applicat
 sys.path.insert(0, APP)                                               # clogging_prognostics
 sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
-from clogging_prognostics import (CloggingPipeline, PipelineConfig,
-                                  run_observation_size_with_stages)
+from clogging_prognostics import (CloggingPipeline, PipelineConfig, load_thresholds,
+                                  run_observation_size_with_stages, threshold_symbol)
 
 STAGE_ORDER = ["prior", "bmu", "bmu_enks"]
 STAGE_LABEL = {"prior": "Prior", "bmu": "BMU", "bmu_enks": r"BMU\,+\,EnKS"}
@@ -108,7 +108,7 @@ def build_pipeline(common, sg):
         input_dimension=common.get("input_dimension", 7),
         n_doe_samples=common.get("n_doe_samples", 1000),
         n_cycles=sg["n_cycles"],
-        clogging_threshold=sg.get("threshold"),
+        clogging_threshold=load_thresholds(common["base_directory"])[sg["sg_tag"]],
     )
     cfg.mcmc.n_chains = common.get("n_chains", 3)
     cfg.mcmc.nb_weights = common.get("nb_weights", 1024)
@@ -117,7 +117,7 @@ def build_pipeline(common, sg):
     return CloggingPipeline(cfg).setup(sg_tag=sg["sg_tag"])
 
 
-def latex_sweep_table(rows_by_k, sg_display, label, threshold, unit):
+def latex_sweep_table(rows_by_k, sg_display, label, symbol, unit):
     """rows_by_k: dict k -> {stage: RULStats}. Emits mean/std vs k for
     BMU and BMU+EnKS side by side."""
     def f(x):
@@ -126,7 +126,7 @@ def latex_sweep_table(rows_by_k, sg_display, label, threshold, unit):
          (rf"  \caption{{RUL mean and standard deviation (in {unit}) as a "
           rf"function of the number $k$ of ESTICOL points assimilated on the "
           rf"prognostics window, with the TVE data held fixed, for "
-          rf"\textbf{{{sg_display}}} (threshold $\tau_c^\ast={threshold:g}\%$).}}"),
+          rf"\textbf{{{sg_display}}} (threshold ${symbol}$).}}"),
          rf"  \label{{{label}}}",
          r"  \begin{tabular}{rrrrr}", r"    \toprule",
          r"    & \multicolumn{2}{c}{BMU} & \multicolumn{2}{c}{BMU\,+\,EnKS}\\",
@@ -198,7 +198,6 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
 
     unit = common.get("unit", "days")
-    threshold = common.get("threshold")
 
     all_csv_rows = []
     json_out = {}
@@ -218,7 +217,7 @@ def main():
         }
         if rows_by_k:
             tables.append(latex_sweep_table(rows_by_k, sg["display"], sg["label"],
-                                            sg.get("threshold", threshold), unit))
+                                            threshold_symbol(sg["sg_tag"]), unit))
         print()
 
     # --- write outputs (csv module, no pandas dependency required) ---

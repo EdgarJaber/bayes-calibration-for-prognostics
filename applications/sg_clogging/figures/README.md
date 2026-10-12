@@ -9,7 +9,7 @@ assimilation (one per steam generator):
 | `SGA_fig_data.pdf`, `SGB_fig_data.pdf` | the same ensemble with the ESTICOL regression points (red) and the TVE field points (blue) | `notebooks/prior_data_figures.ipynb` |
 | `SGA_fig_kle_pce.pdf`, `SGB_fig_kle_pce.pdf` | Karhunen-Loeve + polynomial-chaos surrogate of the TPD and its predictivity coefficient $Q^2(t)$ | `notebooks/prior_data_figures.ipynb` |
 
-`results/` holds the result figures of the article, as exported from the analysis notebooks:
+`article/` holds the result figures of the article, as exported from the analysis notebooks:
 
 | file | content | produced by |
 |---|---|---|

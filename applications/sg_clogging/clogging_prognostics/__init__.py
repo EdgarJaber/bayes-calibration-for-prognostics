@@ -14,7 +14,7 @@ from bayes_fusion.surrogates import build_base_surrogate, build_calibration_ense
 
 from .assimilation import CycleResult, assimilate_cycle
 from .config import (AssimilationConfig, MCMCConfig, MetamodelConfig, PipelineConfig,
-                     PriorSpec)
+                     PriorSpec, load_thresholds, threshold_symbol)
 from .data_io import CloggingDataset, load_dataset
 from .experiment import (PrognosticsStages, RULStats, compute_prognostics_stages,
                          run_full_methodology, run_observation_size,
@@ -25,6 +25,7 @@ from .smoothing import smooth_cycles
 
 __all__ = [
     "PipelineConfig", "PriorSpec", "MCMCConfig", "AssimilationConfig", "MetamodelConfig",
+    "load_thresholds", "threshold_symbol",
     "CloggingDataset", "load_dataset", "CloggingPipeline",
     "CycleResult", "assimilate_cycle",
     "select_active_index", "kl_divergence", "estimate_kl",

@@ -44,8 +44,8 @@ APP = os.path.abspath(os.path.join(HERE, '..'))                       # applicat
 sys.path.insert(0, APP)                                               # clogging_prognostics
 sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
-from clogging_prognostics import (CloggingPipeline, PipelineConfig,
-                                  run_observation_size_with_stages)
+from clogging_prognostics import (CloggingPipeline, PipelineConfig, load_thresholds,
+                                  run_observation_size_with_stages, threshold_symbol)
 from clogging_prognostics.data_io import load_dataset
 from clogging_prognostics.experiment import truncate_last_cycle_observations
 
@@ -112,7 +112,7 @@ def build_pipeline(common, sg):
         input_dimension=common.get("input_dimension", 7),
         n_doe_samples=common.get("n_doe_samples", 1000),
         n_cycles=sg["n_cycles"],
-        clogging_threshold=sg["threshold"],
+        clogging_threshold=load_thresholds(common["base_directory"])[sg["sg_tag"]],
     )
     cfg.mcmc.n_chains = common.get("n_chains", 3)
     cfg.mcmc.nb_weights = common.get("nb_weights", 1024)
@@ -121,13 +121,13 @@ def build_pipeline(common, sg):
     return CloggingPipeline(cfg).setup(sg_tag=sg["sg_tag"])
 
 
-def latex_table(rows, sg_display, label, threshold, unit):
+def latex_table(rows, sg_display, label, symbol, unit):
     def f(x):
         return "--" if (x != x) else f"{x:.1f}"
     L = [r"\begin{table}[ht]", r"  \centering",
          (rf"  \caption{{RUL mean and standard deviation (in {unit}) when only a sub-population of the "
           rf"ESTICOL points of the last cycle is assimilated, for \textbf{{{sg_display}}} "
-          rf"(threshold $\tau_c^\ast={threshold:g}\%$, TVE data fixed).}}"),
+          rf"(threshold ${symbol}$, TVE data fixed).}}"),
          rf"  \label{{{label}}}", r"  \begin{tabular}{lrrrrr}", r"    \toprule",
          r"    & & \multicolumn{2}{c}{BMU} & \multicolumn{2}{c}{BMU\,+\,EnKS}\\",
          r"    \cmidrule(lr){3-4}\cmidrule(lr){5-6}",
@@ -155,7 +155,7 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
     sg_tag = sg["sg_tag"]                     # DATA/ file prefix and output filename tag
     alias = sg_tag
-    print(f"=== ESTICOL kinetics experiment: {sg['display']}, threshold {sg['threshold']:g}%, "
+    print(f"=== ESTICOL kinetics experiment: {sg['display']}, "
           f"nb_weights={common.get('nb_weights', 1024)} ===", flush=True)
 
     if args.dry_run:
@@ -216,7 +216,7 @@ def main():
     if table_rows:
         with open(os.path.join(args.outdir, "esticol_kinetics.tex"), "w") as fh:
             fh.write(latex_table(table_rows, sg["display"], sg.get("label", "tab:esticol_kinetics"),
-                                 sg["threshold"], unit) + "\n")
+                                 threshold_symbol(sg["sg_tag"]), unit) + "\n")
     print(f"\nwrote {args.outdir}/esticol_kinetics.{{csv,json,tex}}", flush=True)
     return 0
 

@@ -31,8 +31,8 @@ APP = os.path.abspath(os.path.join(HERE, '..'))                       # applicat
 sys.path.insert(0, APP)                                               # clogging_prognostics
 sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
-from clogging_prognostics import (CloggingPipeline, PipelineConfig,
-                                  run_observation_size_with_stages)
+from clogging_prognostics import (CloggingPipeline, PipelineConfig, load_thresholds,
+                                  run_observation_size_with_stages, threshold_symbol)
 
 STAGE_ORDER = ["prior", "bmu", "bmu_enks"]
 STAGE_LABEL = {"prior": "Prior", "bmu": "BMU", "bmu_enks": r"BMU\,+\,EnKS"}
@@ -93,7 +93,7 @@ def build_pipeline(common, sg):
         input_dimension=common.get("input_dimension", 7),
         n_doe_samples=common.get("n_doe_samples", 1000),
         n_cycles=sg["n_cycles"],
-        clogging_threshold=sg.get("threshold"),
+        clogging_threshold=load_thresholds(common["base_directory"])[sg["sg_tag"]],
     )
     # MCMC settings (real-run values, not the smoke-test n_chains=1)
     cfg.mcmc.n_chains = common.get("n_chains", 3)
@@ -121,12 +121,12 @@ def run_one(common, sg, outdir):
     return {s.stage: s for s in stats}
 
 
-def latex_table(by_stage, sg_display, label, threshold, unit, dp=1):
+def latex_table(by_stage, sg_display, label, symbol, unit, dp=1):
     def f(x):
         return "--" if (x != x) else f"{x:.{dp}f}"   # NaN -> --
     L = [r"\begin{table}[ht]", r"  \centering",
          (rf"  \caption{{RUL statistics on the prognostics window for a "
-          rf"specified threshold $\tau_c^\ast={threshold:g}\%$, at each stage "
+          rf"specified threshold ${symbol}$, at each stage "
           rf"of the methodology for \textbf{{{sg_display}}}. Values in {unit}.}}"),
          rf"  \label{{{label}}}",
          r"  \begin{tabular}{lrrrrr}", r"    \toprule",
@@ -175,8 +175,7 @@ def main():
         print(f"  done in {dt/60:.1f} min", flush=True)
 
         all_stats[name] = {st: by_stage[st].to_dict() for st in STAGE_ORDER}
-        threshold = sg.get("threshold")
-        tables.append(latex_table(by_stage, name, sg["label"], threshold, unit))
+        tables.append(latex_table(by_stage, name, sg["label"], threshold_symbol(sg["sg_tag"]), unit))
 
     with open(os.path.join(args.outdir, "rul_tables.tex"), "w") as fh:
         fh.write("\n\n".join(tables) + "\n")

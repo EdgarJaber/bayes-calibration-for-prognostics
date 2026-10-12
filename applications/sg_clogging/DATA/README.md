@@ -12,5 +12,6 @@ tag `SGA` / `SGB` used throughout the code):
 | `<SG>_TIME.npy` | simulation time grid (days) |
 | `<SG>_METADATA.json` | chemical conditioning and cleaning dates |
 | `<SG>_FIELD_DATA.csv` | field data: ESTICOL regression points and TVE field points |
+| `thresholds.json` | `{"SGA": <tau_c^{*,A}>, "SGB": <tau_c^{*,B}>}`: the failure thresholds (one file for both SGs) |
 
 See the main README for how to request the data.

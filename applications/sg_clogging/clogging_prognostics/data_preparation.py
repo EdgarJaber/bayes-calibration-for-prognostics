@@ -4,6 +4,16 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 
+
+def _sort_by_time(data: np.ndarray) -> np.ndarray:
+    """Sort a (time, value) row array by its time column (column 0).
+
+    Row order is preserved for tied times. Equivalent to ``np.sort(data,
+    axis=0)`` only when every row is already time-sorted; unlike that call,
+    this never separates a value from its own time.
+    """
+    return data[np.argsort(data[:, 0], kind="stable")]
+
 def prepro_data_pce(data_hl, data_cl, n_max, n_samp, d):
     """
     Preprocess the THYC-Puffer-DEPOTHYC data for building a Gaussian Process metamodel.
@@ -52,7 +62,7 @@ def prepro_data_pce(data_hl, data_cl, n_max, n_samp, d):
     print(len(delete_in), "nan trajectories in output sample")
 
     ### DELETE NAN VALUES ###
-    X = np.delete(_input_sample, delete_in, 1)[:d-1,:n_samp].T
+    X = np.delete(_input_sample, delete_in, 1)[:d,:n_samp].T
     y = np.delete(output_sample, delete_in, 0)[:n_samp,:]
 
     return X, y
@@ -325,7 +335,7 @@ def prepro_data_kl(data_hl, data_cl, n_max, n_samp, d, scale=False):
     print(len(delete_in), "nan trajectories in output sample")
 
     ### DELETE NAN VALUES ###
-    X = np.delete(_input_sample, delete_in, 1)[:d-1,:n_samp].T
+    X = np.delete(_input_sample, delete_in, 1)[:d,:n_samp].T
     y = np.delete(output_sample, delete_in, 0)[:n_samp,:]
 
     if scale:
@@ -392,7 +402,7 @@ def preprocess_data_kl_1(data_hl, data_cl, n_max, n_samp, d, scale=False):
     return X, y
 
 
-def preprocess_field_data(csv_file: str, operation_time: np.array, cleaning_dates: list, with_time_division: bool):
+def preprocess_field_data(csv_file: str, operation_time, cleaning_dates: list, with_time_division: bool):
     """
     Preprocess field data to make it compatible with the MCMC calibration procedure.
     
@@ -440,9 +450,11 @@ def preprocess_field_data(csv_file: str, operation_time: np.array, cleaning_date
             for i in range(len(cleaning_dates) - 1)
         ]
 
-        # Combine ESTICOL and ETV data
+        # Combine ESTICOL and ETV data, sorted by time (row-wise, keeping each
+        # time/value pair together -- np.sort(..., axis=0) would sort each
+        # column independently and decouple times from their values)
         data_combined = [
-            np.sort(np.concatenate((data_esticol[i], data_etv[i]), axis=0), axis=0)
+            _sort_by_time(np.concatenate((data_esticol[i], data_etv[i]), axis=0))
             for i in range(len(data_esticol))
         ]
 
@@ -461,8 +473,10 @@ def preprocess_field_data(csv_file: str, operation_time: np.array, cleaning_date
         return data, time_indices
     
     else:
-        # Combine ESTICOL and ETV data
-        data = np.sort(np.concatenate((esticol, etv), axis=0), axis=0)
+        # Combine ESTICOL and ETV data, sorted by time (row-wise, keeping each
+        # time/value pair together -- np.sort(..., axis=0) would sort each
+        # column independently and decouple times from their values)
+        data = _sort_by_time(np.concatenate((esticol, etv), axis=0))
 
         # Extract time indices for ESTICOL and ETV
         time_indices = [

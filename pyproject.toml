@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bayes-fusion"
+version = "0.1.0"
+description = "Bayesian fusion of heterogeneous data for robust degradation prognostics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "LGPL-3.0" }
+authors = [{ name = "Edgar Jaber" }]
+dependencies = [
+    "numpy",
+    "scipy>=1.7",
+    "scikit-learn",
+    "openturns>=1.24",
+]
+
+[project.optional-dependencies]
+applications = ["pandas", "matplotlib", "jupyter"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["bayes_fusion"]

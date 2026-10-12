@@ -1,5 +1,34 @@
+"""RWMH-MCMC calibration with an aggregated (multi-surrogate) likelihood.
+
+When several equally valid surrogates are available, the likelihood is the average of the
+per-surrogate-mixture likelihoods over a *fixed* scrambled-Sobol design of weights on the
+simplex (``sobol_simplex_weights``), evaluated with a log-sum-exp. The design is built once, so
+the log-likelihood is a deterministic function of the calibrated parameter.
+"""
+import warnings
+
 import openturns as ot
 import numpy as np
+from scipy.special import logsumexp
+from scipy.stats import qmc
+
+def sobol_simplex_weights(p, n_samples, seed=0):
+    """Deterministic scrambled-Sobol design on the (p-1)-simplex.
+
+    Uniform (Dirichlet(1)) low-discrepancy points: Sobol points in [0, 1]^p are mapped
+    through -log(u) to Exponential(1) and normalized. Powers of two for ``n_samples``
+    preserve the Sobol balance properties (2^10, 2^13, ... are recommended).
+    """
+    sobol = qmc.Sobol(d=p, scramble=True, seed=seed)
+    if n_samples > 0 and (n_samples & (n_samples - 1)) == 0:
+        u = sobol.random_base2(int(np.log2(n_samples)))
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            u = sobol.random(n_samples)
+    Z = -np.log(np.clip(u, 1e-12, 1.0))
+    return Z / np.sum(Z, axis=1, keepdims=True)
+
 
 def sample_positive_l1_sphere(p, n_samples):
     """Generate uniform samples from the (p-1)-simplex (positive L1 sphere)."""
@@ -43,8 +72,9 @@ class BayesCalibrationMCMC:
             #    return self.metamodel.predict(self.scaler.transform(np.asarray([[x[0]] + [data_times[i]] for i in range(len(data_times))])))
             
     class LikelihoodFunction:
-        def __init__(self, data: np.array, data_time_indices: list, calibration_functions: list, nb_weights: int, discrepancy=False
-                     ) -> None:
+        def __init__(self, data: np.array, data_time_indices: list, calibration_functions: list, nb_weights: int, discrepancy=False,
+                     weights_seed: int = 0) -> None:
+            self.weights_seed = weights_seed
             self.data = data
             self.calibration_functions = calibration_functions  
             self.data_time_indices = data_time_indices
@@ -54,26 +84,31 @@ class BayesCalibrationMCMC:
         def __call__(self) -> ot.PythonFunction:
             # Define the log-likelihood function
             if len(self.calibration_functions) > 1:      
-                def log_likelihood(x) -> float:
-                    #w1+...+wp = 1 simplex :D :D :D
-                    dirichlet_weights = sample_positive_l1_sphere(len(self.calibration_functions), self.nb_weights)
+                # Fixed low-discrepancy design on the simplex (w1+...+wp = 1), built once so the
+                # likelihood is a deterministic function of x (no resampling noise in the MCMC).
+                dirichlet_weights = sobol_simplex_weights(
+                    len(self.calibration_functions), self.nb_weights, seed=self.weights_seed)
 
+                def log_likelihood(x) -> float:
                     cal_funcs = ((np.asarray([np.asarray((self.calibration_functions)[i](x)) for i in range(len(self.calibration_functions))])).T)[0,:,:]
 
                     # dot product of the weights and the calibration functions
                     model_output = dirichlet_weights @ cal_funcs.T
 
-                    log_likelihoods = []
-                    for i in range(self.nb_weights):
-                        log_pdf = 0
-                        for j in range(len(self.data)):
-                            diff = self.data[j][:, 1] - model_output[i][self.data_time_indices[j]] 
-                            log_pdf += -np.log(np.sum(diff**2)) * len(diff) / 2.0
-                        log_likelihoods.append(log_pdf)
-                    max_logs = np.max(np.asarray(log_likelihoods))
+                    log_likelihoods = np.zeros(self.nb_weights)
+                    for j in range(len(self.data)):
+                        obs = self.data[j][:, 1]
+                        if len(obs) == 0:
+                            # No observations in this channel (e.g. an ESTICOL-count sweep
+                            # at k=0): it contributes nothing to the likelihood. Without
+                            # this guard -log(sum(diff**2)) = +inf and the len(diff) == 0
+                            # factor turns the product into inf * 0 = nan.
+                            continue
+                        diff = obs[None, :] - model_output[:, self.data_time_indices[j]]
+                        log_likelihoods += -np.log(np.sum(diff ** 2, axis=1)) * len(obs) / 2.0
 
-                    # Compute the log-likelihood using logsumexp trick
-                    log_pdf = max_logs + np.log(np.sum(np.exp(np.asarray(log_likelihoods)) - max_logs)) - np.log(self.nb_weights)
+                    # log of the average likelihood over the weights (logsumexp trick)
+                    log_pdf = logsumexp(log_likelihoods) - np.log(self.nb_weights)
                     return [log_pdf]
                 
             else:
@@ -84,7 +119,11 @@ class BayesCalibrationMCMC:
                     for i in range(len(self.data)):
                         # Compute the difference between data and the calibration model output
                         model_output = self.calibration_functions[0](x)
-                        diff = self.data[i][:, 1] - model_output[self.data_time_indices[i]] 
+                        diff = self.data[i][:, 1] - model_output[self.data_time_indices[i]]
+                        if len(diff) == 0:
+                            # No observations in this channel -- see the
+                            # matching guard in the multi-function branch above.
+                            continue
                         # Compute the log-likelihood
                         log_pdf += -np.log(np.sum(diff**2)) * len(diff) / 2.0
                     return [log_pdf]
@@ -96,6 +135,11 @@ class BayesCalibrationMCMC:
     def gelman_rubin_test(
             self, samples: np.array, n_chains: int, sample_size: int
     ) -> float:
+        # Gelman-Rubin measures between-chain variance and is undefined for a
+        # single chain (it divides by n_chains - 1). For a single-chain "quick
+        # look" run, skip the diagnostic and return NaN rather than crashing.
+        if n_chains < 2:
+            return np.array([np.nan])
         # Compute the Gelman-Rubin convergence diagnostic
         sample_means = np.mean(samples, axis=1)
         sample_vars = np.var(samples, axis=1)

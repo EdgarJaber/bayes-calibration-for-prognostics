@@ -1,16 +1,31 @@
 import numpy as np
 import openturns as ot
+import openturns.experimental as otexp
+
+
+def _ot_class(name):
+    """Resolve an OpenTURNS class that moved between the core and the
+    experimental module across versions. In OT 1.24-1.26 the Gaussian-process
+    classes live in openturns.experimental; from 1.27 they are in the core
+    openturns namespace. Prefer the core, fall back to experimental."""
+    if hasattr(ot, name):
+        return getattr(ot, name)
+    if hasattr(otexp, name):
+        return getattr(otexp, name)
+    raise AttributeError(
+        f"OpenTURNS {ot.__version__} exposes neither ot.{name} nor otexp.{name}."
+    )
+
+
+_GaussianProcessFitter = _ot_class("GaussianProcessFitter")
+_GaussianProcessRegression = _ot_class("GaussianProcessRegression")
+_GaussianProcessConditionalCovariance = _ot_class("GaussianProcessConditionalCovariance")
 
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.base import clone
-
-#import torch
-#import torch.nn as nn
-#import torch.optim as optim
-#from torch.utils.data import DataLoader, TensorDataset
 
 
 class GpMetamodel(BaseEstimator):
@@ -64,26 +79,47 @@ class GpMetamodel(BaseEstimator):
         if self.noise:
             covarianceModel.setNuggetFactor(self.noise)
 
-        # Initialize and run the GP model
-        self.gp_ = ot.KrigingAlgorithm(
+        # Initialize and run the GP model (new OpenTURNS API:
+        # GaussianProcessFitter calibrates hyperparameters, then
+        # GaussianProcessRegression conditions the process on the data).
+        fitter = _GaussianProcessFitter(
             ot.Sample(X_train),
             ot.Sample(y_train.reshape(-1, 1)),
             covarianceModel, basis
         )
+        fitter.run()
+        self.gp_ = _GaussianProcessRegression(fitter.getResult())
         self.gp_.run()
 
-        self.gp = self.gp_.getResult().getMetaModel()
+        self.gp_result_ = self.gp_.getResult()
+        self.gp = self.gp_result_.getMetaModel()
 
         self.trained_ = True
 
 
-    def predict(self, X_test):
+    def predict(self, X_test, return_std=False):
         if not self.trained_:
             raise ValueError("The model has not been trained yet.")
-        
+
         y_pred = self.gp(X_test)
 
-        return np.array(y_pred)
+        if not return_std:
+            return np.array(y_pred).reshape(-1, 1)
+
+        # Predictive std via the conditional covariance (new API replacement for
+        # the old callable KrigingResult(...).getStandardDeviation()).
+        gccc = _GaussianProcessConditionalCovariance(self.gp_result_)
+        var = np.array(gccc.getConditionalMarginalVariance(ot.Sample(X_test)))
+        y_std = np.sqrt(np.maximum(var, 0.0))
+        return np.array(y_pred), y_std
+    
+    def r2_score(self, X_test, y_test, time_discretization):
+        if not self.trained_:
+            raise ValueError("You must first fit the Polynomial Chaos Expansion")
+        output = np.asarray(self.predict(X_test)).T
+        transposed_test = y_test.T 
+        r2scores_in_time = np.asarray([r2_score(transposed_test[i], output[i]) for i in range(len(time_discretization))])
+        return r2scores_in_time
 
     def __sklearn_is_fitted__(self):
         return self.trained_
@@ -155,12 +191,14 @@ class GpMetamodelInd(BaseEstimator):
         if self.noise:
             covarianceModel.setNuggetFactor(self.noise)
 
-        # Initialize and run the GP model
-        self.gp_ = ot.KrigingAlgorithm(
+        # Initialize and run the GP model (new OpenTURNS API)
+        fitter = _GaussianProcessFitter(
             ot.Sample(X_train),
             ot.Sample(y_train.reshape(-1, 1)),
             covarianceModel, basis
         )
+        fitter.run()
+        self.gp_ = _GaussianProcessRegression(fitter.getResult())
         self.gp_.run()
 
         self.gp = self.gp_.getResult().getMetaModel()
@@ -277,7 +315,7 @@ class KarhunenLoeveMetamodel(BaseEstimator):
     """
     def __init__(
             self, metamodel: object, input_dimension: int, simulation_time: np.array,
-            explained_variance_threshold=0.9999, 
+            explained_variance_threshold=0.99, 
             verbose=True
             )-> None:
         self.metamodel = metamodel
@@ -327,16 +365,30 @@ class KarhunenLoeveMetamodel(BaseEstimator):
 
             self.eigenfunctions = self.kl_algo_result.getScaledModesAsProcessSample()
             self.eigenvalues = self.kl_algo_result.getEigenvalues()
-
+            
             eigval_square = np.asarray(self.eigenvalues)**2
-            for i in range(self.eigenvalues.getDimension()):
-                self.explained_variance = eigval_square[:i].sum()/eigval_square.sum()
-                if self.explained_variance > self.explained_variance_threshold:
-                    self.nb_modes = i
-                    break
-            if self.verbose:
-                print(f"Explained variance for {i} modes is {self.explained_variance}")
 
+            if self.eigenvalues.getDimension() == 1:
+                self.nb_modes = 1
+                self.explained_variance = 1.0
+            else:
+                dim = self.eigenvalues.getDimension()
+                # Fall back to every retained eigenvalue if the threshold is never
+                # reached -- checking i in range(dim) only ever sums at most
+                # dim - 1 eigenvalues, so it can undershoot explained_variance=1.0
+                # by the last eigenvalue's share and never break, leaving nb_modes
+                # at its stale __init__ default (larger than the number of modes
+                # KarhunenLoeveSVDAlgorithm actually retained -> IndexError below).
+                self.nb_modes = dim
+                self.explained_variance = 1.0
+                for i in range(1, dim + 1):
+                    self.explained_variance = eigval_square[:i].sum()/eigval_square.sum()
+                    if self.explained_variance >= self.explained_variance_threshold:
+                        self.nb_modes = i
+                        break
+            
+            if self.verbose:
+                print(f"Explained variance for {self.nb_modes} modes is {self.explained_variance}")
             self.modes = np.asarray([[self.eigenfunctions.getSampleAtVertex(i)[j][0] for i in range(self.time_discretization)] for j in range(self.nb_modes)])
 
             self.y_decomposed = True
@@ -399,94 +451,69 @@ class KarhunenLoeveMetamodel(BaseEstimator):
         if self.X_train_ is not None and self.y_train_ is not None:
             self.fit(self.X_train_, self.y_train_)
 
-        
 
-#class MLPMetamodel(object):
-#    """
-#    Artificial Neural Network metamodel.
-#    """
-#    def __init__(
-#            self, input_size=1, hidden_layer_size=10, output_size=1,
-#            solver='adam', alpha=0.0001, batch_size=100, 
-#            learning_rate='constant', learning_rate_init=0.001, 
-#            max_iter=200, verbose=True
-#            )-> None:
-#        self.hidden_layer_size = hidden_layer_size
-#        self.solver = solver
-#        self.alpha = alpha
-#        self.batch_size = batch_size
-#        self.learning_rate = learning_rate
-#        self.learning_rate_init = learning_rate_init
-#        self.max_iter = max_iter
-#        self.verbose = verbose
-#        self.trained_ = False
-#
-#    def fit(self, X, y):
-#
-#        class MLP(nn.Module):
-#            def __init__(self, input_size, hidden_size, output_size):
-#                super(MLP, self).__init__()
-#                self.fc1 = nn.Linear(input_size, hidden_size)
-#                self.relu1 = nn.ReLU()
-#                self.fc2 = nn.Linear(hidden_size, hidden_size)
-#                self.relu2 = nn.Sigmoid()
-#                self.fc3 = nn.Linear(hidden_size, output_size)
-#
-#            def forward(self, x):
-#                x = self.fc1(x)
-#                x = self.relu1(x)
-#                x = self.fc2(x)
-#                x = self.relu2(x)
-#                x = self.fc3(x)
-#                return x
-#
-#        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, train_size=0.75, random_state=42)
-#
-#        self.X_train, self.y_train = torch.tensor(self.X_train), torch.tensor(self.y_train)
-#
-#        dataset = TensorDataset(self.X_train, self.y_train)
-#        data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True) 
-#
-#        # Initialize model, loss, and optimizer
-#        self.ann = MLP(self.input_size, self.hidden_layer_size, self.output_size)
-#        criterion = nn.MSELoss()  # Use CrossEntropyLoss for classification
-#
-#        if self.solver == 'adam':
-#            optimizer = optim.Adam(self.ann.parameters(), lr=self.learning_rate_init)
-#        elif self.solver == 'sgd':
-#            optimizer = optim.SGD(self.ann.parameters(), lr=self.learning_rate_init)
-#        
-#        self.losses = []
-#        if self.verbose:
-#            print("Training Artificial Neural Network")
-#        for epoch in range(self.max_iter):
-#            for inputs, labels in data_loader:
-#
-#                inputs = inputs.float()
-#                labels = labels.float() 
-#                # Forward pass
-#                outputs = self.ann(inputs)
-#                loss = criterion(outputs, labels)
-#                # Backward pass
-#                optimizer.zero_grad()
-#                loss.backward()
-#                optimizer.step()
-#            self.losses.append(loss.item())
-#
-#            if self.verbose:
-#                print(f"Epoch [{epoch+1}/{self.max_iter}], Loss: {loss.item():.4f}")
-#                
-#        self.trained_ = True
-#
-#    def predict(self, X_new):
-#        if not self.trained_:
-#            raise ValueError("You must first fit the Artificial Neural Network")
-#        y_pred = self.ann(X_new)
-#        return y_pred
-#
-#    def r2_score(self):
-#        if not self.trained_:
-#            raise ValueError("You must first fit the Artificial Neural Network")
-#        output = self.predict(self.X_test).T
-#        transposed_test = self.y_test.T 
-#        r2scores_in_time = np
+class StochasticCollocGPMetamodel(BaseEstimator):
+    """
+    Wrapper for OpenTURNS Gaussian Process.
+    """
+    def __init__(
+        self, trend: str, kernel: str, 
+        input_dimension: int, simulation_time: np.array, 
+        scaler: StandardScaler,
+        noise: float = None
+    ) -> None:
+        self.trend = trend
+        self.kernel = kernel
+        self.input_dimension = input_dimension
+        self.scaler = scaler
+        self.noise = noise
+        self.simulation_time = simulation_time
+        self.trained_ = False
+        self.X_train_ = None 
+        self.y_train_ = None
+
+    def fit(self, X_train, y_train):
+
+        gp = GpMetamodel(self.trend, self.kernel, self.input_dimension, self.noise)
+        gp.fit(X_train, y_train)
+
+        self.X_train_ = X_train
+        self.y_train_ = y_train
+
+        self.gp_ = gp
+        self.trained_ = True
+
+    def predict(self, X_test, return_std=False):
+        
+        if not self.trained_:
+            raise ValueError("The model has not been trained yet.")
+
+        y_pred, self.X_test_scaled = [], []
+        for l in range(X_test.shape[0]):
+            rand_test = []
+            for q in range(0, len(self.simulation_time)):
+                rand_test.append(list(X_test[l, :self.input_dimension-1]) + [self.simulation_time[q]*24])
+            scaled_test = self.scaler.transform(rand_test)
+            self.X_test_scaled.append(scaled_test)
+            y_pred.append(self.gp_.predict(scaled_test, return_std=return_std))
+        y_pred = np.array(y_pred)
+        self.X_test_scaled = np.array(self.X_test_scaled)
+
+        return y_pred
+
+
+    def __sklearn_is_fitted__(self):
+        return self.trained_
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['gp_'] = None  # Exclude the non-picklable `self.gp` object
+        state['gp'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+        # Recreate the `self.gp` object if training data is available
+        if self.X_train_ is not None and self.y_train_ is not None:
+            self.fit(self.X_train_, self.y_train_)

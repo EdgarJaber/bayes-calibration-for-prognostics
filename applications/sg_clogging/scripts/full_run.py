@@ -2,9 +2,10 @@
 """Run one full pass of the hybrid methodology for each steam generator and
 write the two RUL-statistics LaTeX tables (Prior / BMU / BMU+EnKS).
 
-Config is read from a JSON file (see rul_tables_config.json). Usage:
+Config is read from a JSON file (default configs/rul_tables_config.json). Run it from the
+application root (applications/sg_clogging). Usage:
 
-    python run_rul_tables.py --config rul_tables_config.json --outdir results
+    python scripts/full_run.py --config configs/rul_tables_config.json --outdir results
 
 Outputs, in --outdir:
     rul_tables.tex               both LaTeX tables (paste-ready)
@@ -26,8 +27,9 @@ import time
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)                                    # clogging_prognostics
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..')))   # bayes_fusion (repo root)
+APP = os.path.abspath(os.path.join(HERE, '..'))                       # applications/sg_clogging
+sys.path.insert(0, APP)                                               # clogging_prognostics
+sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
 from clogging_prognostics import (CloggingPipeline, PipelineConfig,
                                   run_observation_size_with_stages)
@@ -140,7 +142,7 @@ def latex_table(by_stage, sg_display, label, threshold, unit, dp=1):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--config", required=True)
+    ap.add_argument("--config", default=os.path.join(APP, "configs", "rul_tables_config.json"))
     ap.add_argument("--outdir", default="results")
     args = ap.parse_args()
 

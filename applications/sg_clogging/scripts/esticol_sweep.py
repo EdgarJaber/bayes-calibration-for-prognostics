@@ -6,13 +6,13 @@ held fixed) and records the RUL distribution statistics at each stage
 (Prior / BMU / BMU+EnKS) for every k. This is the quantitative "value of
 ESTICOL" study.
 
-Config is read from JSON (see esticol_sweep_config.json): one "common" block of
+Config is read from JSON (default configs/esticol_sweep_config.json): one "common" block of
 shared pipeline/MCMC settings, plus a "steam_generators" list -- each entry has
 its own sg_tag, window anchors, and obs_sizes grid (the two SGs' last cycles
 have very different ESTICOL counts, so each grid is sized to its own SG's true
 max). One invocation loops over every SG in the list, sequentially. Usage:
 
-    python run_esticol_sweep.py --config esticol_sweep_config.json --outdir results_sweep
+    python scripts/esticol_sweep.py --config configs/esticol_sweep_config.json --outdir results_sweep
 
 Outputs, in --outdir:
     esticol_sweep.csv     tidy long table: one row per (sg_tag, k, stage)
@@ -44,8 +44,9 @@ import time
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)                                    # clogging_prognostics
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..')))   # bayes_fusion (repo root)
+APP = os.path.abspath(os.path.join(HERE, '..'))                       # applications/sg_clogging
+sys.path.insert(0, APP)                                               # clogging_prognostics
+sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
 from clogging_prognostics import (CloggingPipeline, PipelineConfig,
                                   run_observation_size_with_stages)
@@ -186,7 +187,7 @@ def run_one_sg(common, sg, outdir):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--config", required=True)
+    ap.add_argument("--config", default=os.path.join(APP, "configs", "esticol_sweep_config.json"))
     ap.add_argument("--outdir", default="results_sweep")
     args = ap.parse_args()
 

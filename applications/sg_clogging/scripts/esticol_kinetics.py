@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ESTICOL "kinetics" experiment on SG B.
 
-Instead of the first-k sweep of ``run_esticol_sweep.py``, assimilate only a
+Instead of the first-k sweep of ``esticol_sweep.py``, assimilate only a
 sub-population of the LAST cycle's ESTICOL points (TVE data held fixed), chosen
 by the clogging kinetics they follow:
 
@@ -12,13 +12,13 @@ Everything else (DoE, HSIC screening, 15-member calibration ensemble, fixed-Sobo
 QMC weights, MCMC, EnKS, RUL stages) is the standard pipeline. The earlier,
 selection-independent cycles are assimilated once and shared by both experiments.
 
-Config: esticol_kinetics_config.json (each experiment has a name, a ``selection``
+Config: configs/esticol_kinetics_config.json (each experiment has a name, a ``selection``
 -- "first", "last" or a [start, stop] pair of chronological indices into the last
 cycle's ESTICOL points -- and ``k``, the number of points for first/last).
 
-    ./run_esticol_kinetics.py --config esticol_kinetics_config.json --outdir results_kinetics
-    ./run_esticol_kinetics.py --dry-run            # only list the selected points (fast)
-    ./run_esticol_kinetics.py --only exponential   # run a single experiment
+    python scripts/esticol_kinetics.py --config configs/esticol_kinetics_config.json --outdir results_kinetics
+    python scripts/esticol_kinetics.py --dry-run            # only list the selected points (fast)
+    python scripts/esticol_kinetics.py --only exponential   # run a single experiment
 
 Outputs, in --outdir:
     esticol_kinetics.csv / .json / .tex           RUL statistics per experiment and stage
@@ -40,8 +40,9 @@ import traceback
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)                                    # clogging_prognostics
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..')))   # bayes_fusion (repo root)
+APP = os.path.abspath(os.path.join(HERE, '..'))                       # applications/sg_clogging
+sys.path.insert(0, APP)                                               # clogging_prognostics
+sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
 from clogging_prognostics import (CloggingPipeline, PipelineConfig,
                                   run_observation_size_with_stages)
@@ -140,7 +141,7 @@ def latex_table(rows, sg_display, label, threshold, unit):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="esticol_kinetics_config.json")
+    ap.add_argument("--config", default=os.path.join(APP, "configs", "esticol_kinetics_config.json"))
     ap.add_argument("--outdir", default="results_kinetics")
     ap.add_argument("--only", nargs="*", help="run only these experiment names")
     ap.add_argument("--dry-run", action="store_true", help="only list/save the selected ESTICOL points")

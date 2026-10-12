@@ -1,6 +1,6 @@
 # Introduction
 
-This is the reproducible code for the paper *Fusion of heterogeneous data for robust degradation prognostics* published in Reliability Engineering and System Safety, and whose preprint is available [here](https://edgarjaber.github.io/assets/pdfs/ress_fusion_25.pdf)
+This is the reproducible code for the paper *Fusion of heterogeneous data for robust degradation prognostics* published in Reliability Engineering and System Safety, available [in open acess](https://doi.org/10.1016/j.ress.2026.112435).
 
 To cite this work, please use the following BibTeX entry:
 ```
@@ -52,7 +52,7 @@ legacy/                        the code as published with the article (kept for 
 
 We run our methodology on two cases:
 -    The Paris-Erdogan's law which is an ODE-based degradation model of crack propagation. We run the methodology on a fictitious material with an explicit Euler implementation of the model, available in [this notebook](examples/crack_growth/crack_growth_paris_law.ipynb). It is self-contained and runs in well under a minute.
-- The THYC-Puffer-DEPO clogging simulator for steam generators in pressurized-water-reactors, in [applications/sg_clogging](applications/sg_clogging). To protect the industrial secrecy, the clogging data are **not** distributed with this repository (the `applications/sg_clogging/DATA` folder is git-ignored, see end of README). The two steam generators are called SG A and SG B, with failure thresholds of 40 % and 60 % of clogging. The application provides the full-data run, the ESTICOL observation-size sweep and the kinetics experiment, together with the notebooks used to analyse them.
+- The THYC-Puffer-DEPO clogging simulator for steam generators in pressurized-water-reactors, in [applications/sg_clogging](applications/sg_clogging). To protect the industrial secrecy, the clogging data are **not** distributed with this repository (the `applications/sg_clogging/DATA` folder is git-ignored, see end of README). The two steam generators are called SG A and SG B, with failure thresholds of 40 % and 60 % of clogging. The application provides the full-data run, the ESTICOL observation-size sweep and the kinetics experiment (one `run.sh` launcher), the notebooks used to analyse them, and the preprocessing figures of the article in `figures/`.
 
 The code of the article as published is kept in [legacy](legacy).
 

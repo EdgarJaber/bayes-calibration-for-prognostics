@@ -3,7 +3,7 @@
 For the last cycle of each SG (first refinement iteration, prior = DoE prior), compares:
 
   * likelihood variants
-      current : max + log(sum(exp(ll) - max)) - log(W)   (formula as written in mcmc_integration.py)
+      current : max + log(sum(exp(ll) - max)) - log(W)   (formula of the original mcmc_integration.py)
       avg     : logsumexp(ll) - log(W)                    (the intended average over the weights)
       max     : max(ll)                                   (profile over the weights)
   * weight schemes
@@ -16,7 +16,7 @@ Part 3: real OpenTURNS random-walk MH runs over several seeds, random vs fixed d
 
 The 15 calibration members only depend on the active parameter, so their outputs are
 precomputed on a grid and linearly interpolated -- the likelihood is then cheap.
-Outputs go to results_noise_study/.
+Run it from the application root; outputs go to results_noise_study/.
 """
 import json
 import os
@@ -25,8 +25,9 @@ import time
 import warnings
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)                                    # clogging_prognostics
-sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', '..')))   # bayes_fusion (repo root)
+APP = os.path.abspath(os.path.join(HERE, '..'))                       # applications/sg_clogging
+sys.path.insert(0, APP)                                               # clogging_prognostics
+sys.path.insert(0, os.path.abspath(os.path.join(APP, '..', '..')))    # bayes_fusion (repo root)
 
 import matplotlib
 matplotlib.use("Agg")

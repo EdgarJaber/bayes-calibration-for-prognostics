@@ -1,0 +1,38 @@
+{
+  "common": {
+    "base_directory": "DATA/",
+    "input_dimension": 7,
+    "n_doe_samples": 1000,
+    "unit": "days",
+    "n_rul_samples": 1000,
+    "n_chains": 3,
+    "nb_weights": 1024,
+    "sample_size": 1000,
+    "burn_in": 100
+  },
+  "steam_generator": {
+    "display": "SG B",
+    "sg_tag": "SGB",
+    "threshold": 60.0,
+    "n_cycles": 2,
+    "split_sim_hours": 176568,
+    "prognostics_split_hours": 176808,
+    "label": "tab:esticol_kinetics_sgb"
+  },
+  "experiments": [
+    {
+      "name": "quasi_linear",
+      "description": "first 20 ESTICOL points after the last chemical cleaning (quasi-linear kinetics)",
+      "selection": "first",
+      "k": 20
+    },
+    {
+      "name": "exponential",
+      "description": "the 20 ESTICOL points of the exponential rise only, ending at the peak just before the drop (chronological indices 32..51; later points excluded)",
+      "selection": [
+        32,
+        52
+      ]
+    }
+  ]
+}
